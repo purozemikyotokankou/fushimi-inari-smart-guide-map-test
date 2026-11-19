@@ -1,0 +1,16 @@
+伏見稲荷スマートガイド V162 テスト版
+
+index.html        言語選択
+home.html         ホーム
+planner.html      MapLibre + OpenFreeMap Positron を使うルート・ナビマップ
+spots.html        スポット一覧
+spot-manager.html スポット管理ツール
+sando-editor.html 参道データ編集ツール
+data/spots.json   スポットデータ
+data/routes.json  参道・ルートデータ
+css/              スタイル
+js/               アプリケーションスクリプト
+images/           画像・カスタムアイコン
+videos/           ホーム動画
+
+GitHub Pagesへの公開手順は TEST_SETUP_GUIDE_JA.md を参照してください。

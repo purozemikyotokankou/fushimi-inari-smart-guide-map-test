@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#f5f5f7">
+    <title>伏見稲荷スマートガイド</title>
+    <!-- V162: MapLibre GL + OpenFreeMap Positron test basemap. -->
+
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/planner.css?v=162-maplibre-test">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.css">
+<style id="fushimi-adaptive-light-styles">
+/* V82 — same adaptive edge-light look, anchored to the screen edge above Leaflet tiles. */
+#map {
+    --fushimi-night-level: 0;
+    --fushimi-map-brightness: 1;
+    --fushimi-map-saturation: 1;
+}
+#map .leaflet-tile-pane {
+    filter: brightness(var(--fushimi-map-brightness, 1)) saturate(var(--fushimi-map-saturation, 1));
+    transition: filter 26s linear;
+}
+#fushimiAdaptiveLight {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 650 !important; /* stable screen-edge layer above Leaflet's map pane; transparent + pointer-events:none */
+    display: block !important;
+    visibility: visible !important;
+    overflow: hidden;
+    pointer-events: none;
+    isolation: isolate;
+    --fushimi-edge-rgb: 255, 178, 120;
+    --fushimi-light-strength: .76;
+    --fushimi-light-blur: 2px;
+}
+#fushimiAdaptiveLight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        /* A strong, continuous edge like indirect cove lighting, fading inward. */
+        linear-gradient(180deg,
+            rgba(var(--fushimi-edge-rgb), .48) 0px,
+            rgba(var(--fushimi-edge-rgb), .42) 28px,
+            rgba(var(--fushimi-edge-rgb), .31) 52px,
+            rgba(var(--fushimi-edge-rgb), .20) 82px,
+            rgba(var(--fushimi-edge-rgb), .105) 128px,
+            rgba(var(--fushimi-edge-rgb), .035) 185px,
+            transparent 245px),
+        linear-gradient(90deg,
+            rgba(var(--fushimi-edge-rgb), .11),
+            transparent 16%, transparent 84%,
+            rgba(var(--fushimi-edge-rgb), .11));
+    mix-blend-mode: screen;
+    filter: blur(var(--fushimi-light-blur));
+    opacity: .82;
+    transition: filter 5s ease, opacity 18s ease, background 24s ease;
+}
+#fushimiAdaptiveLight::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    box-shadow:
+        inset 0 14px 42px -7px rgba(var(--fushimi-edge-rgb), .34),
+        inset 0 0 46px -15px rgba(var(--fushimi-edge-rgb), .18),
+        inset 0 -3px 24px -15px rgba(var(--fushimi-edge-rgb), .10);
+    opacity: .92;
+    transition: box-shadow 24s ease, opacity 10s ease;
+}
+#fushimiAdaptiveLight .fushimi-adaptive-light-source {
+    position: absolute;
+    top: -2px;
+    left: 94%;
+    width: min(58vw, 760px);
+    height: 245px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 0%,
+        rgba(var(--fushimi-edge-rgb), .36) 0%,
+        rgba(var(--fushimi-edge-rgb), .20) 35%,
+        rgba(var(--fushimi-edge-rgb), .08) 58%,
+        transparent 82%);
+    filter: blur(var(--fushimi-light-blur));
+    opacity: var(--fushimi-light-strength, .76);
+    pointer-events: none;
+    transition:
+        left 28s cubic-bezier(.22,.61,.36,1),
+        background 24s ease,
+        filter 5s ease,
+        opacity 18s ease;
+}
+#fushimiAdaptiveLight.weather-sunny { --fushimi-light-blur: 1px; }
+#fushimiAdaptiveLight.weather-cloudy { --fushimi-light-blur: 8px; }
+#fushimiAdaptiveLight.weather-cloudy::before { opacity: .83; }
+#fushimiAdaptiveLight.weather-rainy { --fushimi-light-blur: 4.5px; }
+#fushimiAdaptiveLight.weather-rainy::before { opacity: .94; }
+#fushimiAdaptiveLight.weather-snowy { --fushimi-light-blur: 6px; }
+#fushimiAdaptiveLight.weather-snowy::before { opacity: .86; }
+@media (max-width: 700px) {
+    #fushimiAdaptiveLight::before { background-size: auto, auto; }
+    #fushimiAdaptiveLight .fushimi-adaptive-light-source { width: 78vw; height: 205px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #map .leaflet-tile-pane,
+    #fushimiAdaptiveLight::before,
+    #fushimiAdaptiveLight::after,
+    #fushimiAdaptiveLight .fushimi-adaptive-light-source { transition-duration: 1ms !important; }
+}
+</style>
+</head>
+
+<body class="planner-page" data-color-theme="universal-design-v48" data-google-form-url="https://docs.google.com/forms/d/e/1FAIpQLSfZQYyVeUwdfxDnmGi2dWMtzfNxWuxCfhIR0BTycJzAO8pytQ/viewform?usp=dialog">
+<div class="liquid-cursor" aria-hidden="true"></div>
+
+<header class="planner-site-header">
+    <div class="logo" aria-label="FUSHIMI INARI SMART GUIDE"><span class="logo-mark" aria-hidden="true">⛩</span><span class="logo-full">FUSHIMI INARI SMART GUIDE</span></div>
+
+    <nav aria-label="Main navigation">
+        <a href="home.html" data-i18n="home">ホーム</a>
+        <a href="planner.html" data-i18n="planner">ルート</a>
+        <a href="spots.html" data-i18n="spots">スポット</a>
+    </nav>
+
+    <select id="languageSelect" aria-label="Language">
+        <option value="ja">🇯🇵 日本語</option>
+        <option value="en">🇺🇸 English</option>
+        <option value="zh">🇨🇳 中文</option>
+        <option value="ko">🇰🇷 한국어</option>
+    </select>
+</header>
+
+<main class="planner-page">
+    <div class="planner-workspace">
+
+        <section class="planner-map-panel" aria-label="Map">
+            <div class="planner-map-section">
+                <div class="planner-map-title">
+                    <span class="planner-map-eyebrow">FUSHIMI INARI · SMART GUIDE</span>
+                    <h1>観光マップ</h1>
+                </div>
+
+                <div id="maplibreBase"></div>
+                <div id="map" aria-label="伏見稲荷の地図"></div>
+                <div id="maplibreStatus" class="maplibre-status" role="status" aria-live="polite">
+                    <span class="maplibre-status-dot" aria-hidden="true"></span>
+                    <span id="maplibreStatusText">新しい地図を読み込んでいます…</span>
+                    <button type="button" id="maplibreRetry" hidden>再読み込み</button>
+                </div>
+
+                <div class="planner-top-actions" aria-label="Map actions">
+                    <button type="button" id="openMapSearchBtn" class="map-action-tile map-search-action" aria-label="スポットを検索" aria-expanded="false" aria-controls="mapSearchPopover">
+                        <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="10.8" cy="10.8" r="6.2"></circle><path d="m15.4 15.4 4.2 4.2"></path></svg></span>
+                        <span class="map-action-label">検索</span>
+                    </button>
+                    <button type="button" id="openSavedSpotsBtn" class="map-action-tile map-saved-action" aria-label="保存したスポットを表示" aria-controls="savedSpotsDialog">
+                        <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.8L6 21Z"/></svg></span>
+                        <span class="map-action-label" data-saved-ui="open">保存済み</span>
+                    </button>
+                </div>
+                <div class="map-search-popover" id="mapSearchPopover" hidden>
+                    <label for="searchInput">スポットを検索</label>
+                    <div class="map-search-input-row">
+                        <input id="searchInput" class="planner-search-input" type="search" autocomplete="off" placeholder="スポット名・キーワード">
+                        <button type="button" id="closeMapSearchBtn" class="map-search-close" aria-label="検索を閉じる">×</button>
+                    </div>
+                </div>
+                <div class="planner-location-dock" aria-label="Current location">
+                    <button type="button" id="locationBtn" class="map-action-tile map-location-action" title="現在地を表示" aria-label="現在地を表示">
+                        <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2.2"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"></path></svg></span>
+                        <span class="map-action-label">現在地</span>
+                    </button>
+                </div>
+
+                <div class="planner-map-hint" aria-hidden="true">地図を動かしてスポットを探せます</div>
+            </div>
+        </section>
+        <aside class="planner-spot-panel is-collapsed" id="plannerBottomSheet" aria-label="Spot information">
+            <button
+                type="button"
+                id="plannerSheetHandle"
+                class="planner-sheet-handle"
+                aria-expanded="false"
+                aria-controls="plannerSheetContent"
+                aria-label="上下にスワイプしてスポット一覧を開閉"
+            >
+                <span class="planner-sheet-grabber" aria-hidden="true"></span>
+                
+            </button>
+
+            <div id="plannerSheetContent" class="planner-sheet-content">
+
+                <section class="planner-category-tray" aria-label="Spot categories" id="plannerCategoryTray">
+    <div class="food-category-switcher planner-category-deck" id="foodCategorySwitcher" data-face="categories">
+        <div class="food-category-flip-inner">
+            <!-- Real side faces give the rotating capsule physical thickness. -->
+            <span class="food-category-edge food-category-edge-top" aria-hidden="true"></span>
+            <span class="food-category-edge food-category-edge-bottom" aria-hidden="true"></span>
+            <span class="food-category-edge food-category-edge-left" aria-hidden="true"></span>
+            <span class="food-category-edge food-category-edge-right" aria-hidden="true"></span>
+            <span class="food-category-edge food-category-edge-rear" aria-hidden="true"></span>
+            <div class="food-category-face food-category-front-face" id="plannerCategoryFront">
+                <div class="planner-category-grid planner-category-main-grid">
+                    <button type="button" class="category category-button active" data-category="all"><span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-all.svg')" aria-hidden="true"></span><span class="category-label" data-ja="すべて" data-en="All" data-zh="全部" data-ko="전체">すべて</span></button>
+                    <button type="button" class="category category-button" data-category="sightseeing"><span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-sightseeing.svg')" aria-hidden="true"></span><span class="category-label" data-ja="見どころ" data-en="Explore" data-zh="景点" data-ko="명소">見どころ</span></button>
+                    <button type="button" class="category-button food-category-trigger" id="foodCategoryTrigger" aria-expanded="false" aria-controls="foodCategoryOptions" aria-label="食べる・買うを選ぶ">
+    <span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-food-shop.svg')" aria-hidden="true"></span>
+    <span class="category-label" data-ja="食べる・買う" data-en="Eat & Shop" data-zh="餐饮·购物" data-ko="먹기·쇼핑">食べる・買う</span>
+</button>
+                    <button type="button" class="category category-button" data-category="交通"><span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-transport.svg')" aria-hidden="true"></span><span class="category-label" data-ja="交通" data-en="Transit" data-zh="交通" data-ko="교통">交通</span></button>
+                    <button type="button" class="category category-button" data-category="施設"><span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-facilities.svg')" aria-hidden="true"></span><span class="category-label" data-ja="施設" data-en="Facilities" data-zh="设施" data-ko="시설">施設</span></button>
+                </div>
+            </div>
+            <div class="food-category-options food-category-face food-category-back-face" id="foodCategoryOptions" aria-hidden="true">
+                <div class="planner-category-grid food-submenu-grid">
+                    <button type="button" class="food-close-button food-choice-button" id="foodCategoryClose" aria-label="食べる・買うを閉じる">
+    <span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-back.svg')" aria-hidden="true"></span>
+    <span class="category-label food-choice-label" data-ja="閉じる" data-en="Back" data-zh="返回" data-ko="뒤로">閉じる</span>
+</button>
+                    <button type="button" class="category category-button food-option food-choice-button" data-category="グルメ" data-food-filter="eat">
+    <span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-food.svg')" aria-hidden="true"></span>
+    <span class="category-label food-choice-label" data-ja="食べる" data-en="Eat" data-zh="餐饮" data-ko="먹기">食べる</span>
+</button>
+                    <button type="button" class="category category-button food-option food-choice-button" data-category="グルメ" data-food-filter="buy">
+    <span class="category-glyph category-glyph-image" style="--category-mask: url('./images/icons/category-buy.svg')" aria-hidden="true"></span>
+    <span class="category-label food-choice-label" data-ja="買う" data-en="Shop" data-zh="购物" data-ko="쇼핑">買う</span>
+</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+                <section class="spot-list-window">
+                    <div id="spotList">
+                        <!-- planner.js -->
+                    </div>
+                </section>
+
+                <section class="selected-section">
+                    <div class="sheet-section-heading">
+                        <h2 data-i18n="selectedSpots">選択したスポット</h2>
+                        <div class="selected-heading-actions">
+                            <span class="sheet-section-note">ルート順</span>
+                            <button type="button" id="cancelSelectedSpotsBtn" class="cancel-selected-spots-button" hidden>選択をキャンセル</button>
+                        </div>
+                    </div>
+                    <div id="selectedSpots">
+                        <div id="selectedList">
+                            <p>スポットを選択してください。</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="route-info" aria-label="Route information">
+                    <div class="sheet-section-heading">
+                        <h2 data-i18n="routeInfo">ルート情報</h2>
+                    </div>
+                    <div class="route-info-content">
+                        <div class="route-stat">
+                            <span class="route-stat-label" data-i18n="numberOfSpots">スポット数</span>
+                            <strong id="spotCount">0か所</strong>
+                        </div>
+                        <div class="route-stat">
+                            <span class="route-stat-label">距離</span>
+                            <strong id="distance">0 km</strong>
+                        </div>
+                        <div class="route-stat">
+                            <span class="route-stat-label">徒歩時間</span>
+                            <strong id="walkTime">0分</strong>
+                        </div>
+                        <div class="route-stat">
+                            <span class="route-stat-label">滞在時間</span>
+                            <strong id="stayTime">0分</strong>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="planner-actions">
+                    <button type="button" id="saveRoute" class="sheet-action sheet-action-primary">💾 <span data-i18n="saveRoute">ルートを保存</span></button>
+                    <button type="button" id="googleFormButton" class="sheet-action">📝 アンケート</button>
+                </section>
+            </div>
+        </aside>
+
+        <section id="mapSpotDetail" class="map-spot-detail is-compact" aria-label="スポット詳細" hidden>
+            <button type="button" id="mapSpotDetailHandle" class="map-spot-detail-handle" aria-label="上にスワイプして詳細を表示">
+                <span class="map-spot-detail-grabber" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="closeMapSpotDetail" class="map-spot-detail-close" aria-label="スポット詳細を閉じる">×</button>
+            <div id="mapSpotDetailContent" class="map-spot-detail-content"></div>
+        </section>
+
+        <div id="spotShareDialog" class="spot-share-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="spotShareTitle">
+            <button type="button" class="spot-share-backdrop" data-share-close aria-label="閉じる"></button>
+            <section class="spot-share-dialog-panel">
+                <header class="spot-share-dialog-header">
+                    <div>
+                        <p class="spot-share-eyebrow">FUSHIMI INARI SMART GUIDE</p>
+                        <h2 id="spotShareTitle">スポットをシェア</h2>
+                    </div>
+                    <button type="button" class="spot-share-close" data-share-close aria-label="閉じる">×</button>
+                </header>
+                <p id="spotShareSpotName" class="spot-share-spot-name"></p>
+                <div class="spot-share-qr-frame">
+                    <img id="spotShareQrImage" class="spot-share-qr-image" alt="別の端末でスポットを開くQRコード" referrerpolicy="no-referrer">
+                    <p id="spotShareQrFallback" class="spot-share-qr-fallback" hidden>QRコードを読み込めませんでした。リンクをコピーして共有してください。</p>
+                </div>
+                <p id="spotShareHint" class="spot-share-hint">QRコードを読み取ると、同じスポットを開けます。</p>
+                <label class="spot-share-link-label" for="spotShareUrlInput">共有リンク</label>
+                <input id="spotShareUrlInput" class="spot-share-url-input" type="url" readonly>
+                <div class="spot-share-dialog-actions">
+                    <button type="button" id="copySpotShareUrl" class="spot-share-copy-button">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a1.5 1.5 0 0 0-1.5-1.5h-9A1.5 1.5 0 0 0 4 5v10.5A1.5 1.5 0 0 0 5.5 17H8"></path></svg>
+                        <span>リンクをコピー</span>
+                    </button>
+                    <button type="button" id="nativeSpotShare" class="spot-share-native-button">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.7 10.7 6.6-4.4M8.7 13.3l6.6 4.4"></path></svg>
+                        <span>共有</span>
+                    </button>
+                </div>
+                <p id="spotShareStatus" class="spot-share-status" role="status" aria-live="polite"></p>
+            </section>
+        </div>
+
+        <div id="savedSpotsDialog" class="spot-share-dialog saved-spots-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="savedSpotsTitle">
+            <button type="button" class="spot-share-backdrop" data-saved-close aria-label="閉じる"></button>
+            <section class="spot-share-dialog-panel saved-spots-dialog-panel">
+                <header class="spot-share-dialog-header">
+                    <div>
+                        <p class="spot-share-eyebrow">FUSHIMI INARI SMART GUIDE</p>
+                        <h2 id="savedSpotsTitle">保存したスポット</h2>
+                    </div>
+                    <button type="button" class="spot-share-close" data-saved-close aria-label="閉じる">×</button>
+                </header>
+                <p id="savedSpotsCount" class="saved-spots-count" aria-live="polite"></p>
+                <div id="savedSpotsList" class="saved-spots-list"></div>
+            </section>
+        </div>
+
+
+    </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.min.js" defer></script>
+<script src="js/map-engine-maplibre.js?v=162" defer></script>
+<script src="js/language.js?v=138" defer></script>
+<script src="js/planner.js?v=162-maplibre-test" defer></script>
+<script src="js/planner-weather.js?v=138" defer></script>
+<script src="js/planner-ambient-light.js?v=138" defer></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const links = document.querySelectorAll(".planner-site-header nav a");
+        const file = window.location.pathname.split("/").pop() || "home.html";
+        links.forEach(function (link) {
+            const href = (link.getAttribute("href") || "").split("/").pop();
+            if (href === file) {
+                link.classList.add("nav-active");
+                link.setAttribute("aria-current", "page");
+            }
+        });
+    });
+</script>
+<script src="js/liquid-cursor.js?v=94" defer></script>
+</body>
+</html>

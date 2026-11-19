@@ -1,0 +1,11 @@
+V162 MAPLIBRE TEST BUILD
+
+Map renderer: MapLibre GL JS 5.7.1
+Basemap style: OpenFreeMap Positron
+Style URL: https://tiles.openfreemap.org/styles/positron
+
+Leaflet remains as a transparent overlay only for existing spot marker / route / popup / selection logic. The MapLibre camera and Leaflet camera are synchronized. Pitch and bearing are intentionally locked in this first integration so that Leaflet overlays stay registered to the map.
+
+Initial view: 34.96788994013442, 135.77865108489644, zoom 17.
+
+See TEST_SETUP_GUIDE_JA.md for GitHub Pages setup and field tests.
