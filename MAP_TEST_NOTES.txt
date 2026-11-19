@@ -1,4 +1,4 @@
-V162 MAPLIBRE TEST BUILD
+V163 MAPLIBRE TEST BUILD
 
 Map renderer: MapLibre GL JS 5.7.1
 Basemap style: OpenFreeMap Positron
@@ -9,3 +9,5 @@ Leaflet remains as a transparent overlay only for existing spot marker / route /
 Initial view: 34.96788994013442, 135.77865108489644, zoom 17.
 
 See TEST_SETUP_GUIDE_JA.md for GitHub Pages setup and field tests.
+
+3D camera: initial pitch 48 degrees; a glass 2D/3D switch is shown. Two-finger pitch/rotation is enabled. Existing Leaflet route panes are projectively transformed to match MapLibre, while SVG markers are re-positioned in viewport coordinates so they remain upright. 3D building extrusion is attempted when the Positron vector source exposes the OpenMapTiles building layer.

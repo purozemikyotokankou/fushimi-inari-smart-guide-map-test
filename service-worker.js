@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — MapLibre test build (v162) */
+/* Fushimi Inari Smart Guide — MapLibre 3D test build (v163) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-maptest-v162';
+const CACHE_NAME = 'fushimi-smart-guide-maptest-v163';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 162;
+const WORKER_VERSION = 163;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',

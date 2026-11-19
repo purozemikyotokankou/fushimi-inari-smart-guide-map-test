@@ -5269,14 +5269,19 @@ document.addEventListener("DOMContentLoaded", function () {
         return palette;
     }
 
+    function getVisualMapPoint(latLng) {
+        const projected = window.FushimiMapEngine?.projectLatLng?.(latLng);
+        return projected ? L.point(projected.x, projected.y) : map.latLngToContainerPoint(latLng);
+    }
+
     function getNearbyMarkerSpots(anchorSpot, radiusPx = 58) {
         const anchorMarker = markerMap.get(String(anchorSpot?.id));
         if (!anchorMarker) return [];
 
-        const anchorPoint = map.latLngToContainerPoint(anchorMarker.getLatLng());
+        const anchorPoint = getVisualMapPoint(anchorMarker.getLatLng());
         const nearby = [];
         markerMap.forEach(function (marker, id) {
-            const point = map.latLngToContainerPoint(marker.getLatLng());
+            const point = getVisualMapPoint(marker.getLatLng());
             const dx = point.x - anchorPoint.x;
             const dy = point.y - anchorPoint.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
@@ -5335,7 +5340,7 @@ document.addEventListener("DOMContentLoaded", function () {
         palette.classList.remove("is-open", "is-below");
 
         const mapSize = map.getSize();
-        const anchorPoint = map.latLngToContainerPoint(anchorMarker.getLatLng());
+        const anchorPoint = getVisualMapPoint(anchorMarker.getLatLng());
         const paletteRect = palette.getBoundingClientRect();
         const paletteWidth = Math.min(paletteRect.width || 286, mapSize.x - 20);
         const paletteHeight = paletteRect.height || 180;
@@ -7885,6 +7890,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive =
             true;
+        window.FushimiMapEngine?.setNavigationMode?.(true);
         navigationFollowPaused = false;
         lastNavigationFollowLocation = null;
 
@@ -7937,7 +7943,17 @@ document.addEventListener("DOMContentLoaded", function () {
                                 Number(
                                     position.coords.accuracy ||
                                     0
-                                )
+                                ),
+
+                            heading:
+                                Number.isFinite(position.coords.heading)
+                                    ? position.coords.heading
+                                    : null,
+
+                            speed:
+                                Number.isFinite(position.coords.speed)
+                                    ? position.coords.speed
+                                    : 0
                         };
 
                     setCurrentLocation(
@@ -7996,6 +8012,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function stopNavigation() {
 
         navigationActive = false;
+        window.FushimiMapEngine?.setNavigationMode?.(false);
         navigationFollowPaused = false;
         lastNavigationFollowLocation = null;
 
@@ -8150,14 +8167,18 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        // Follow the visitor during navigation, keeping the map north-up so the
-        // legacy SVG spot pins and orange route overlay remain precisely aligned.
+        // Follow the visitor with a tilted 3D camera. When GPS provides a
+        // reliable course while moving, orient the map in the walking direction.
         if (!navigationFollowPaused) {
             const last = lastNavigationFollowLocation;
-            const movedEnough = !last || map.distance([last.lat, last.lng], [location.lat, location.lng]) >= 10;
+            const movedEnough = !last || map.distance([last.lat, last.lng], [location.lat, location.lng]) >= 5;
             if (movedEnough) {
                 lastNavigationFollowLocation = { lat: location.lat, lng: location.lng };
-                map.panTo([location.lat, location.lng], { animate: true, duration: 0.32 });
+                if (window.FushimiMapEngine?.followLocation) {
+                    window.FushimiMapEngine.followLocation(location);
+                } else {
+                    map.panTo([location.lat, location.lng], { animate: true, duration: 0.32 });
+                }
             }
         }
 

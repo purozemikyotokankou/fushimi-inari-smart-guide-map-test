@@ -1,4 +1,4 @@
-# 伏見稲荷スマートガイド — MapLibreテスト環境 V162
+# 伏見稲荷スマートガイド — MapLibreテスト環境 V163
 
 このフォルダは、本番サイトとは別のGitHubリポジトリで新しい地図を試すための完全なテスト用プロジェクトです。
 
@@ -15,7 +15,7 @@
 
 ## 重要な技術上の範囲
 
-これは移行の第一段階です。現在のスポット・ルート描画はLeafletの座標投影に依存しているため、オーバーレイ位置のずれを防ぐ目的で、MapLibreの地図回転・3D傾斜はこのテストでは無効にしています。地図は北向きの2D表示です。GPS追従、既存の残距離・次の目的地表示を確認できます。現在地を画面下寄りに固定するカメラ、進行方向への自動回転、3D傾斜はまだ含めていません。これらはスポット・ルート描画をMapLibreネイティブレイヤーへ移植してから実装する次段階です。MapLibreネイティブの回転・3D表示は、スポット/ルート描画をMapLibreレイヤーへ移植した後の次段階です。
+この版ではMapLibreの3Dカメラを有効にしています。初期表示はpitch 48度で、画面左上の「2D」ボタンから真上表示に切り替えられます。スマホは2本指操作で傾き・回転を調整できます。既存のLeaflet参道線・案内線は投影変換でMapLibreのカメラに追従させ、スポットSVGアイコンは正立したまま再配置します。OpenFreeMap Positronが建物ベクターレイヤーを公開している場合は、建物の3D押し出しレイヤーも追加します。GPSナビ中は、位置情報の進行方向が十分な精度で取れた場合に地図の向きを合わせます。 なお、伏見稲荷の山の起伏そのものを標高データで立体化する地形3D（Terrain DEM）はこの版には含めていません。
 
 OpenFreeMapの公開インスタンスを使うため、地図表示にはインターネット接続が必要です。OpenFreeMap公式案内では、公開インスタンスはAPIキー・登録なしで利用でき、MapLibre利用時は必要な地図帰属表示が自動追加されます。
 
@@ -34,7 +34,7 @@ OpenFreeMapの公開インスタンスを使うため、地図表示にはイン
 
 ### 2. ZIPを展開して中身をアップロード
 
-1. `fushimi_metamap_v162_maplibre_test.zip` をPCに保存して展開します。
+1. `fushimi_metamap_v163_maplibre_3d_test.zip` をPCに保存して展開します。
 2. 展開してできたフォルダを開きます。
 3. その中にある `index.html`、`planner.html`、`css`、`js`、`data`、`images`、`videos` などをすべて選択します。
 4. 新しく作った空のGitHubリポジトリ画面で `uploading an existing file` を押します。
@@ -76,7 +76,7 @@ GitHubユーザー名が `purozemikyotokankou` の場合、テストマップURL
 
 ## 依存先・ライセンス・帰属表示
 
-- MapLibre GL JS 5.7.1 (BSD-3-Clause): https://maplibre.org/maplibre-gl-js/docs/
+- MapLibre GL JS 5.7.1 (3D camera enabled) (BSD-3-Clause): https://maplibre.org/maplibre-gl-js/docs/
 - OpenFreeMap Positron: https://openfreemap.org/ （公開スタイルURL: `https://tiles.openfreemap.org/styles/positron`）
 - OpenFreeMap / OpenMapTiles / OpenStreetMap attribution: MapLibreの標準帰属表示を地図右下に表示します。
 - OpenStreetMap data: ODbL. OpenFreeMapの利用条件も確認してください: https://openfreemap.org/terms/
