@@ -6935,6 +6935,41 @@ body.planner-page .liquid-cursor {
     gap: 8px;
     pointer-events: none;
 }
+/* V167 — only JR Nara Line and Keihan Main Line receive distinct rail colors. */
+.maplibre-rail-legend {
+    position: absolute;
+    z-index: 955;
+    top: 154px;
+    right: 12px;
+    display: grid;
+    gap: 7px;
+    padding: 9px 11px;
+    border: 1px solid rgba(255,255,255,.88);
+    border-radius: 13px;
+    background: rgba(255,255,255,.84);
+    color: #35404a;
+    box-shadow: 0 5px 16px rgba(25,35,45,.11), inset 0 1px 0 rgba(255,255,255,.9);
+    font: 700 10px/1.2 system-ui, -apple-system, sans-serif;
+    letter-spacing: .01em;
+    pointer-events: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+.maplibre-rail-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+.maplibre-rail-legend-swatch {
+    display: inline-block;
+    flex: 0 0 19px;
+    width: 19px;
+    height: 4px;
+    border-radius: 99px;
+    background: var(--rail-line-color);
+    box-shadow: 0 0 0 1px rgba(30,40,50,.08);
+}
 .maplibre-camera-button {
     width: 46px;
     height: 42px;
@@ -6961,6 +6996,7 @@ body.planner-page .liquid-cursor {
 }
 @media (max-width: 700px) {
     .maplibre-camera-control { top: calc(100px + env(safe-area-inset-top)); left: 10px; }
+    .maplibre-rail-legend { top: calc(148px + env(safe-area-inset-top)); right: 8px; padding: 8px 9px; gap: 6px; font-size: 9px; }
     .maplibre-camera-button { width: 42px; height: 39px; border-radius: 12px; }
     .maplibre-camera-hint { display: none; }
     #maplibreBase .maplibregl-ctrl-bottom-right { right: 4px !important; bottom: 4px !important; }
