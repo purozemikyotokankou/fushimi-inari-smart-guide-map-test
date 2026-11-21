@@ -24,6 +24,9 @@
     let viewButton = null;
     let viewButtonHost = null;
     let isAdding3DBuildings = false;
+    let loadTimeoutId = 0;
+    const markerTransformCache = new WeakMap();
+    const markerLayers = new Set();
 
     const status = () => document.getElementById("maplibreStatus");
     const statusText = () => document.getElementById("maplibreStatusText");
@@ -133,10 +136,8 @@
 
         const panes = leafletMap.getPanes();
         const mapPane = panes.mapPane || leafletMap._mapPane;
-        if (mapPane) {
-            // Leaflet stores its pan offset on mapPane. Each child pane is now
-            // transformed directly from Leaflet layer coordinates into the
-            // MapLibre screen plane, so the parent transform must be neutral.
+        if (mapPane && (mapPane.style.transform !== "none" || mapPane.style.webkitTransform !== "none")) {
+            // Keep Leaflet's parent pan transform neutral; child panes are projected directly.
             mapPane.style.transformOrigin = "0 0";
             mapPane.style.webkitTransformOrigin = "0 0";
             mapPane.style.transform = "none";
@@ -146,21 +147,41 @@
         Object.entries(panes).forEach(([name, pane]) => {
             if (!pane || name === "mapPane" || name === "tilePane") return;
             const containsMarkers = !!pane.querySelector?.(".leaflet-marker-icon, .leaflet-marker-shadow");
-            pane.style.transformOrigin = "0 0";
-            pane.style.webkitTransformOrigin = "0 0";
-            pane.style.transform = containsMarkers ? "none" : transform;
-            pane.style.webkitTransform = containsMarkers ? "none" : transform;
+            const nextTransform = containsMarkers ? "none" : transform;
+            if (pane._fushimiProjectionTransform !== nextTransform) {
+                pane.style.transformOrigin = "0 0";
+                pane.style.webkitTransformOrigin = "0 0";
+                pane.style.transform = nextTransform;
+                pane.style.webkitTransform = nextTransform;
+                pane._fushimiProjectionTransform = nextTransform;
+            }
         });
 
-        // Keep SVG pins upright rather than flattening them into the ground plane.
-        // Their anchor positions still use the exact MapLibre camera projection.
-        Object.values(leafletMap._layers || {}).forEach((layer) => {
-            if (!(layer instanceof window.L.Marker) || !layer._icon) return;
+        // Sub-pixel translate3d avoids Leaflet's integer-pixel rounding during 3D movement.
+        // Track marker layers separately so every camera frame does not scan
+        // hundreds of unrelated route polylines and overlay layers.
+        markerLayers.forEach((layer) => {
+            if (!layer || !layer._icon) return;
             const latLng = layer.getLatLng();
             const point = mapLibreMap.project([latLng.lng, latLng.lat]);
             if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
-            window.L.DomUtil.setPosition(layer._icon, window.L.point(point.x, point.y));
-            if (layer._shadow) window.L.DomUtil.setPosition(layer._shadow, window.L.point(point.x, point.y));
+            const applyPosition = (element) => {
+                if (!element) return;
+                const x = Number(point.x.toFixed(2));
+                const y = Number(point.y.toFixed(2));
+                const value = `translate3d(${x}px, ${y}px, 0)`;
+                if (markerTransformCache.get(element) !== value || element.style.transform !== value) {
+                    element.style.transform = value;
+                    element.style.webkitTransform = value;
+                    element.style.willChange = "transform";
+                    element.style.backfaceVisibility = "hidden";
+                    element.style.webkitBackfaceVisibility = "hidden";
+                    markerTransformCache.set(element, value);
+                }
+                element._leaflet_pos = window.L.point(point.x, point.y);
+            };
+            applyPosition(layer._icon);
+            applyPosition(layer._shadow);
         });
     }
 
@@ -261,12 +282,32 @@
         const container = document.getElementById("maplibreBase");
         if (!container) return null;
 
+        const retry = retryButton();
+        if (retry && retry.dataset.fushimiBound !== "true") {
+            retry.dataset.fushimiBound = "true";
+            retry.addEventListener("click", function () {
+                if (!mapLibreMap) {
+                    window.location.reload();
+                    return;
+                }
+                loaded = false;
+                showStatus("3Dマップを再読み込みしています…", false);
+                if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
+                mapLibreMap.setStyle(STYLE_URL);
+                loadTimeoutId = window.setTimeout(function () {
+                    if (!loaded) showStatus("地図を読み込めません。通信環境を確認してください。", true);
+                }, 18000);
+            });
+        }
+
         if (!window.maplibregl || typeof window.maplibregl.Map !== "function") {
             showStatus("新しい地図エンジンを読み込めませんでした。通信環境を確認してください。", true);
             return null;
         }
 
         try {
+            showStatus("3Dマップを読み込んでいます…", false);
+            if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
             mapLibreMap = new window.maplibregl.Map({
                 container,
                 style: STYLE_URL,
@@ -287,44 +328,53 @@
                 cooperativeGestures: false
             });
 
-            mapLibreMap.on("load", function () {
+            function handleMapStyleReady() {
                 loaded = true;
+                if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
+                loadTimeoutId = 0;
                 hideStatus();
                 container.classList.add("is-maplibre-loaded");
                 add3DBuildings();
                 createViewButton();
                 if (mapLibreMap) mapLibreMap.resize();
                 scheduleOverlayProjection();
+            }
+
+            mapLibreMap.on("load", function () {
+                handleMapStyleReady();
                 console.info("[Fushimi Map Test] MapLibre 3D + OpenFreeMap Positron loaded.");
             });
 
-            mapLibreMap.on("style.load", function () {
-                add3DBuildings();
-            });
+            // style.load also fires after setStyle(); using it for readiness
+            // makes the in-page retry button work after an initial style failure.
+            mapLibreMap.on("style.load", handleMapStyleReady);
 
             mapLibreMap.on("error", function (event) {
                 const message = event && event.error && event.error.message;
                 console.warn("[Fushimi Map Test] MapLibre error:", message || event);
-                if (!loaded) showStatus("地図データを読み込めません。通信環境を確認して再読み込みしてください。", true);
             });
+            loadTimeoutId = window.setTimeout(function () {
+                if (!loaded) showStatus("3Dマップを読み込めません。通信環境を確認して再読み込みしてください。", true);
+            }, 18000);
 
+            const mapRoot = document.getElementById("map");
+            mapLibreMap.on("movestart", function () {
+                mapRoot?.classList.add("is-camera-moving");
+            });
+            mapLibreMap.on("moveend", function () {
+                mapRoot?.classList.remove("is-camera-moving");
+            });
             mapLibreMap.on("dragstart", notifyUserMapGesture);
             mapLibreMap.on("rotatestart", notifyUserMapGesture);
             mapLibreMap.on("pitchstart", notifyUserMapGesture);
+            mapLibreMap.on("zoomstart", notifyUserMapGesture);
             mapLibreMap.on("move", updateViewButton);
-            mapLibreMap.on("render", scheduleOverlayProjection);
+            mapLibreMap.on("render", updateLeafletOverlayProjection);
 
-            const retry = retryButton();
-            if (retry) {
-                retry.addEventListener("click", function () {
-                    showStatus("地図を再読み込みしています…", false);
-                    if (mapLibreMap) mapLibreMap.setStyle(STYLE_URL);
-                });
-            }
             return mapLibreMap;
         } catch (error) {
             console.error("[Fushimi Map Test] MapLibre initialization failed:", error);
-            showStatus("このブラウザでは新しい地図を起動できませんでした。WebGL対応ブラウザで開いてください。", false);
+            showStatus("このブラウザでは新しい地図を起動できませんでした。WebGL対応ブラウザか通信環境を確認して再読み込みしてください。", true);
             return null;
         }
     }
@@ -332,6 +382,26 @@
     function bindLeaflet(leaflet) {
         leafletMap = leaflet;
         if (!mapLibreMap || !leafletMap) return false;
+        ["dragging", "touchZoom", "doubleClickZoom", "scrollWheelZoom", "boxZoom", "keyboard"].forEach((name) => {
+            const handler = leafletMap[name];
+            if (handler && typeof handler.disable === "function") handler.disable();
+        });
+        const tilePane = leafletMap.getPanes()?.tilePane;
+        if (tilePane) tilePane.style.display = "none";
+        leafletMap.getContainer().style.background = "transparent";
+
+        // Register only marker layers. Route lines and other Leaflet overlays
+        // are transformed as panes and do not need per-marker DOM positioning.
+        markerLayers.clear();
+        leafletMap.eachLayer((layer) => {
+            if (layer instanceof window.L.Marker) markerLayers.add(layer);
+        });
+        leafletMap.on("layeradd", (event) => {
+            if (event.layer instanceof window.L.Marker) markerLayers.add(event.layer);
+        });
+        leafletMap.on("layerremove", (event) => {
+            if (event.layer instanceof window.L.Marker) markerLayers.delete(event.layer);
+        });
 
         function closeEnough(a, b) {
             return Math.abs(a - b) < 0.000001;
@@ -344,17 +414,14 @@
             const current = leafletMap.getCenter();
             if (closeEnough(current.lat, center.lat) &&
                 closeEnough(current.lng, center.lng) &&
-                Math.abs(leafletMap.getZoom() - zoom) < 0.005) {
-                scheduleOverlayProjection();
-                return;
-            }
+                Math.abs(leafletMap.getZoom() - zoom) < 0.005) return;
             syncLock = "maplibre";
             try {
                 leafletMap.setView([center.lat, center.lng], zoom, { animate: false });
             } finally {
                 syncLock = null;
             }
-            scheduleOverlayProjection();
+            // MapLibre's following render event updates the overlay in this same frame.
         }
 
         function syncMapLibreFromLeaflet() {
@@ -364,10 +431,7 @@
             const current = mapLibreMap.getCenter();
             if (closeEnough(current.lat, center.lat) &&
                 closeEnough(current.lng, center.lng) &&
-                Math.abs(mapLibreMap.getZoom() - zoom) < 0.005) {
-                scheduleOverlayProjection();
-                return;
-            }
+                Math.abs(mapLibreMap.getZoom() - zoom) < 0.005) return;
             syncLock = "leaflet";
             try {
                 // Omitted pitch/bearing preserve the current MapLibre 3D camera.
@@ -375,28 +439,15 @@
             } finally {
                 syncLock = null;
             }
-            scheduleOverlayProjection();
+            // The resulting MapLibre render will project the overlay in-frame.
         }
 
-        mapLibreMap.on("move", syncLeafletFromMapLibre);
+        mapLibreMap.on("moveend", syncLeafletFromMapLibre);
         leafletMap.on("move", syncMapLibreFromLeaflet);
         leafletMap.on("moveend zoomend viewreset resize layeradd layerremove", scheduleOverlayProjection);
 
-        // Re-emit a background tap as a Leaflet map click so old dismissal logic remains intact.
-        mapLibreMap.on("click", function (event) {
-            if (!leafletMap || !window.L) return;
-            const rect = leafletMap.getContainer().getBoundingClientRect();
-            const original = event.originalEvent || null;
-            const point = original && Number.isFinite(original.clientX)
-                ? window.L.point(original.clientX - rect.left, original.clientY - rect.top)
-                : leafletMap.latLngToContainerPoint([event.lngLat.lat, event.lngLat.lng]);
-            leafletMap.fire("click", {
-                latlng: window.L.latLng(event.lngLat.lat, event.lngLat.lng),
-                containerPoint: point,
-                layerPoint: leafletMap.containerPointToLayerPoint(point),
-                originalEvent: original
-            });
-        });
+        // The MapLibre canvas is inside the Leaflet container; its native click
+        // already bubbles to Leaflet. Avoid dispatching duplicate background clicks.
 
         syncLeafletFromMapLibre();
         scheduleOverlayProjection();
@@ -415,28 +466,79 @@
         return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : null;
     }
 
+    function getCameraOffsetForPoint(targetPoint) {
+        const canvas = mapLibreMap.getCanvas();
+        const width = canvas.clientWidth || canvas.width;
+        const height = canvas.clientHeight || canvas.height;
+        const desiredX = Number.isFinite(targetPoint?.x) ? Math.max(0, Math.min(width, targetPoint.x)) : width * 0.5;
+        const desiredY = Number.isFinite(targetPoint?.y) ? Math.max(0, Math.min(height, targetPoint.y)) : height * 0.5;
+        // A temporary offset places the chosen coordinate in the visible area
+        // without changing MapLibre's persistent viewport padding.
+        return [desiredX - width * 0.5, desiredY - height * 0.5];
+    }
+
+    function easeToCoordinate(latLng, targetPoint, zoom, duration = 700) {
+        if (!mapLibreMap || !Array.isArray(latLng) || latLng.length < 2) return false;
+        const coordinate = [Number(latLng[1]), Number(latLng[0])];
+        if (!coordinate.every(Number.isFinite)) return false;
+        const targetZoom = Number.isFinite(Number(zoom)) ? Number(zoom) - LEAFLET_ZOOM_OFFSET : mapLibreMap.getZoom();
+        const animationDuration = Math.max(0, Number(duration) || 0);
+        const options = { center: coordinate, zoom: targetZoom, offset: getCameraOffsetForPoint(targetPoint), duration: animationDuration, essential: true };
+        programmaticCameraMove = true;
+        if (animationDuration === 0) mapLibreMap.jumpTo(options);
+        else mapLibreMap.easeTo(options);
+        mapLibreMap.once("moveend", function () { programmaticCameraMove = false; });
+        window.setTimeout(function () { programmaticCameraMove = false; }, Math.max(900, animationDuration + 250));
+        return true;
+    }
+
+    function fitBounds(bounds, options = {}) {
+        if (!mapLibreMap || !bounds) return false;
+        const animationDuration = Number.isFinite(options.duration) ? options.duration : 650;
+        programmaticCameraMove = true;
+        mapLibreMap.fitBounds(bounds, {
+            padding: options.padding || { top: 100, right: 56, bottom: 180, left: 56 },
+            maxZoom: Number.isFinite(options.maxZoom) ? options.maxZoom - LEAFLET_ZOOM_OFFSET : 16,
+            duration: animationDuration,
+            essential: true
+        });
+        mapLibreMap.once("moveend", function () { programmaticCameraMove = false; });
+        window.setTimeout(function () { programmaticCameraMove = false; }, Math.max(1000, animationDuration + 350));
+        return true;
+    }
+
     function followLocation(location) {
         if (!mapLibreMap || !location) return;
+        const coordinate = [Number(location.lng), Number(location.lat)];
+        if (!coordinate.every(Number.isFinite)) return;
+        const duration = Number.isFinite(location.duration) ? location.duration : 650;
         const options = {
-            center: [Number(location.lng), Number(location.lat)],
+            center: coordinate,
+            zoom: Number.isFinite(location.zoom) ? location.zoom - LEAFLET_ZOOM_OFFSET : mapLibreMap.getZoom(),
+            offset: getCameraOffsetForPoint(location.targetPoint),
             pitch: NAVIGATION_PITCH,
-            duration: 520,
+            duration,
             essential: true
         };
         const heading = Number(location.heading);
         const speed = Number(location.speed);
         const hasHeading = location.heading !== null && location.heading !== undefined && Number.isFinite(heading);
-        if (hasHeading && heading >= 0 && speed > 0.8) options.bearing = heading;
+        if (hasHeading && heading >= 0 && Number.isFinite(speed) && speed > 0.8) options.bearing = heading;
         programmaticCameraMove = true;
         mapLibreMap.easeTo(options);
         mapLibreMap.once("moveend", function () { programmaticCameraMove = false; });
-        window.setTimeout(function () { programmaticCameraMove = false; }, 1500);
+        window.setTimeout(function () { programmaticCameraMove = false; }, Math.max(1000, duration + 350));
     }
 
     function setNavigationMode(enabled) {
         if (!mapLibreMap) return;
         programmaticCameraMove = true;
-        mapLibreMap.easeTo({ pitch: enabled ? NAVIGATION_PITCH : DEFAULT_PITCH, duration: 550, essential: true });
+        mapLibreMap.easeTo({
+            pitch: enabled ? NAVIGATION_PITCH : DEFAULT_PITCH,
+            bearing: enabled ? mapLibreMap.getBearing() : 0,
+            duration: 550,
+            essential: true
+        });
         mapLibreMap.once("moveend", function () { programmaticCameraMove = false; });
         window.setTimeout(function () { programmaticCameraMove = false; }, 1500);
     }
@@ -446,8 +548,11 @@
         bindLeaflet,
         resize,
         getMap: function () { return mapLibreMap; },
+        getZoom: function () { return mapLibreMap ? mapLibreMap.getZoom() + LEAFLET_ZOOM_OFFSET : null; },
         getStyleUrl: function () { return STYLE_URL; },
         projectLatLng,
+        easeToCoordinate,
+        fitBounds,
         followLocation,
         setNavigationMode,
         setPitch: function (pitch) { if (mapLibreMap) mapLibreMap.easeTo({ pitch: Math.max(0, Math.min(MAX_PITCH, Number(pitch) || 0)), duration: 550 }); }

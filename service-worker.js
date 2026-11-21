@@ -1,13 +1,15 @@
-/* Fushimi Inari Smart Guide — offline support (v148) */
+/* Fushimi Inari Smart Guide — offline support (v165) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v149';
+const CACHE_NAME = 'fushimi-smart-guide-v165';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 149;
+const WORKER_VERSION = 165;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
-  'https://unpkg.com/leaflet/dist/leaflet.js',
-  'https://unpkg.com/leaflet/dist/leaflet.css'
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js',
+  'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css'
 ];
 
 self.addEventListener('install', (event) => {
@@ -83,11 +85,13 @@ const PRELOAD_CORE = [
   './index.html', './home.html', './planner.html', './spots.html',
   './css/style.css', './css/planner.css',
   './js/language.js', './js/home-ui.js', './js/home-boot.js',
-  './js/planner.js', './js/planner-weather.js', './js/planner-ambient-light.js',
-  './js/spots.js', './js/carto-config.js', './js/liquid-cursor.js', './js/app-boot.js',
+  './js/planner.js', './js/map-engine-maplibre.js', './js/planner-weather.js', './js/planner-ambient-light.js',
+  './js/spots.js', './js/liquid-cursor.js', './js/app-boot.js',
   './service-worker.js',
-  'https://unpkg.com/leaflet/dist/leaflet.js',
-  'https://unpkg.com/leaflet/dist/leaflet.css'
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js',
+  'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css'
 ];
 const PRELOAD_DATA = ['./data/spots.json', './data/routes.json'];
 const PRELOAD_ICONS = [
@@ -267,7 +271,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache only Leaflet cross-origin assets; CARTO tiles and live APIs remain online.
+  // Cache the pinned MapLibre and Leaflet runtime assets; live map tiles remain online.
   if (!sameOrigin) {
     if (!CDN_ASSETS.includes(url.href)) return;
     event.respondWith((async () => {

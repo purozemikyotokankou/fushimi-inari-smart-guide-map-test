@@ -4,8 +4,8 @@ document.addEventListener("DOMContentLoaded", function () {
     // BUILD MARKER — V11.2
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V163-CARTO-KEEP-KEY";
-    console.log("[Fushimi Inari Smart Guide] planner.js V163-CARTO-KEEP-KEY loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V165-MAPLIBRE-3D";
+    console.log("[Fushimi Inari Smart Guide] planner.js V165-MAPLIBRE-3D loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // V11 additions
     // ① 現在地を出発地点として利用
     // ② Liquid Glass UIをJSから追加
-    // ③ CARTO Positronの淡色地図を使用
+    // ③ MapLibre + OpenFreeMap Positron 3Dマップを使用
     // ④ ルート線をユニバーサルデザインパレットのオレンジ #FF9900
     // ⑤ routes.json をグラフとして扱う
     // ⑥ routes.json の複数区間を自動接続
@@ -371,38 +371,55 @@ document.addEventListener("DOMContentLoaded", function () {
     const plannerWeatherDetail = document.getElementById("plannerWeatherDetail");
 
     // ============================================================
-    // Leaflet地図
+    // 3Dベースマップ + Leafletオーバーレイ
     // ============================================================
 
-    const map =
-        L.map("map", {
-            zoomControl: false,
-            preferCanvas: true,
-            fadeAnimation: false,
-            zoomAnimation: true,
-            markerZoomAnimation: true,
-            // CARTO tiles were failing at higher zoom levels in this project.
-            // Stop at z18 so zooming cannot request the failing z19/z20 tiles.
-            minZoom: 0,
-            maxZoom: 18,
-            bounceAtZoomLimits: false,
-            zoomSnap: 1,
-            zoomDelta: 1
-        }).setView(
-            [34.96788994013442, 135.77865108489644],
-            17
-        );
+    // MapLibre owns the basemap and all camera gestures. Leaflet is a transparent
+    // overlay for existing custom SVG pins, route lines and popup interactions.
+    const map = L.map("map", {
+        zoomControl: false,
+        attributionControl: false,
+        preferCanvas: true,
+        fadeAnimation: false,
+        zoomAnimation: false,
+        markerZoomAnimation: false,
+        minZoom: 0,
+        maxZoom: 18,
+        bounceAtZoomLimits: false,
+        zoomSnap: 0,
+        zoomDelta: 0.5,
+        dragging: false,
+        touchZoom: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false
+    }).setView([34.96788994013442, 135.77865108489644], 17);
+
+    const mapEngine = window.FushimiMapEngine;
+    if (mapEngine && typeof mapEngine.createMap === "function" && typeof mapEngine.bindLeaflet === "function") {
+        const mapLibreInstance = mapEngine.createMap();
+        if (mapLibreInstance) mapEngine.bindLeaflet(map);
+        else console.error("[Fushimi] MapLibre failed to initialize; see the map status message.");
+    } else {
+        console.error("[Fushimi] MapLibre bridge or MapLibre GL JS did not load.");
+        const status = document.getElementById("maplibreStatus");
+        const text = document.getElementById("maplibreStatusText");
+        if (status && text) {
+            text.textContent = "3Dマップのプログラムを読み込めませんでした。ページを再読み込みしてください。";
+            status.hidden = false;
+        }
+    }
+    map.getContainer().style.background = "transparent";
+    if (map.getPanes()?.tilePane) map.getPanes().tilePane.style.display = "none";
 
 
     // Weather presentation and Open-Meteo refresh are isolated in planner-weather.js.
 
     function refreshPlannerMapSize() {
         requestAnimationFrame(function () {
-            if (map && typeof map.invalidateSize === "function") {
-                map.invalidateSize({
-                    pan: false
-                });
-            }
+            if (map && typeof map.invalidateSize === "function") map.invalidateSize({ pan: false });
+            window.FushimiMapEngine?.resize?.();
         });
     }
 
@@ -412,97 +429,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     setTimeout(refreshPlannerMapSize, 120);
 
-    // ============================================================
-    // V113: CARTO Positron only. Use CARTO's documented keyed raster endpoint; do not switch providers.
-    // CARTO requires its documented host/path pattern for keyed tile requests.
-    // Keep the selected Positron style and do not switch map providers.
-    // ============================================================
-    const CARTO_BASEMAP_API_KEY = String(window.FUSHIMI_CARTO_BASEMAP_API_KEY || "").trim();
-    // Use CARTO's documented API-key endpoint. The keyed Basemaps URL is on
-    // basemaps.cartocdn.com without the legacy {s} subdomain prefix.
-    const CARTO_POSITRON_TILE_URL =
-        "https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png" +
-        (CARTO_BASEMAP_API_KEY ? "?key=" + encodeURIComponent(CARTO_BASEMAP_API_KEY) : "");
-    const CARTO_ATTRIBUTION =
-        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>, ' +
-        '&copy; <a href="https://carto.com/attribution/" target="_blank" rel="noopener noreferrer">CARTO</a> · ' +
-        '<a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo.com</a>';
-
-    const cartoPositronLayer = L.tileLayer(CARTO_POSITRON_TILE_URL, {
-        minZoom: 0,
-        maxZoom: 18,
-        maxNativeZoom: 18,
-        keepBuffer: 3,
-        updateWhenIdle: false,
-        updateWhenZooming: true,
-        attribution: CARTO_ATTRIBUTION
-    });
-
-    let cartoTileErrorCount = 0;
-    let cartoTileLoadCount = 0;
-    let cartoTileErrorNotice = null;
-
-    // CARTO Basemaps requires the API key on every tile request. Do not retry
-    // without a key: that fallback now returns an "API key required" tile and
-    // can replace an otherwise recoverable layer with a permanently unusable one.
-    function showCartoTileErrorNotice() {
-        if (cartoTileErrorNotice || cartoTileLoadCount > 0) return;
-        const lang = (typeof getCurrentLanguage === "function" ? getCurrentLanguage() : "ja");
-        const messages = {
-            ja: "地図を読み込めません。CARTO APIキーの許可ドメインと通信環境を確認してください。",
-            en: "Map tiles could not be loaded. Check the CARTO API key's allowed domains and your connection.",
-            zh: "地图加载失败。请检查 CARTO API 密钥的允许域名和网络连接。",
-            ko: "지도를 불러오지 못했습니다. CARTO API 키의 허용 도메인과 네트워크 연결을 확인해 주세요."
-        };
-        cartoTileErrorNotice = document.createElement("div");
-        cartoTileErrorNotice.className = "planner-carto-error-notice";
-        cartoTileErrorNotice.textContent = messages[lang] || messages.ja;
-        Object.assign(cartoTileErrorNotice.style, {
-            position: "absolute",
-            zIndex: "1200",
-            top: "calc(env(safe-area-inset-top, 0px) + 84px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "min(92%, 520px)",
-            boxSizing: "border-box",
-            padding: "10px 14px",
-            borderRadius: "14px",
-            background: "rgba(255,255,255,.94)",
-            color: "#7c2d25",
-            border: "1px solid rgba(180,70,55,.22)",
-            boxShadow: "0 5px 18px rgba(0,0,0,.12)",
-            font: "600 12px/1.55 system-ui, sans-serif",
-            textAlign: "center",
-            pointerEvents: "none"
-        });
-        map.getContainer().appendChild(cartoTileErrorNotice);
-    }
-
-    cartoPositronLayer.on("tileload", function () {
-        cartoTileLoadCount += 1;
-        if (cartoTileLoadCount === 1) {
-            console.info("[Fushimi] CARTO Positron tiles are loading.");
-            if (cartoTileErrorNotice) {
-                cartoTileErrorNotice.remove();
-                cartoTileErrorNotice = null;
-            }
-        }
-    });
-    cartoPositronLayer.on("tileerror", function (event) {
-        cartoTileErrorCount += 1;
-        if (cartoTileErrorCount === 1 || cartoTileErrorCount % 8 === 0) {
-            console.error("[Fushimi] CARTO Positron tile failed; zoom=" + map.getZoom() +
-                ", failedTiles=" + cartoTileErrorCount +
-                ", loadedTiles=" + cartoTileLoadCount +
-                ", keyConfigured=" + Boolean(CARTO_BASEMAP_API_KEY) +
-                ". Check the CARTO API key, allowed Referer hosts, and network access.",
-                event && event.tile ? event.tile.src : "");
-        }
-        if (cartoTileErrorCount >= 4 && cartoTileLoadCount === 0) {
-            showCartoTileErrorNotice();
-        }
-    });
-    cartoPositronLayer.addTo(map);
+    // Old CARTO raster tiles are intentionally not used in the 3D map.
+    // MapLibre/OpenFreeMap renders the basemap; Leaflet only holds spot and route overlays.
 
     // ============================================================
     // ルート用Pane
@@ -4280,21 +4208,27 @@ document.addEventListener("DOMContentLoaded", function () {
     function focusCoordinateOnMap(latLng, options = {}) {
         const zoom = Number.isFinite(options.zoom)
             ? options.zoom
-            : Math.min(18, Math.max(16, Number(map.getZoom?.() || 16)));
+            : Math.min(18, Math.max(16, Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 16)));
+        const visiblePoint = getVisibleMapFocusPoint();
+        if (window.FushimiMapEngine?.easeToCoordinate) {
+            window.FushimiMapEngine.easeToCoordinate(latLng, visiblePoint, zoom, options.animate === false ? 0 : (options.duration || 780));
+            return;
+        }
         const center = getMapCenterForCoordinate(latLng, zoom);
-        if (options.animate === false) {
-            map.setView(center, zoom, { animate: false });
-            return;
-        }
-        if (options.panOnly) {
-            map.panTo(center, { animate: true, duration: options.duration || 0.42, easeLinearity: 0.25 });
-            return;
-        }
-        map.flyTo(center, zoom, {
-            animate: true,
-            duration: options.duration || 0.85,
-            easeLinearity: 0.22
-        });
+        if (options.animate === false) map.setView(center, zoom, { animate: false });
+        else map.flyTo(center, zoom, { animate: true, duration: options.duration || 0.85, easeLinearity: 0.22 });
+    }
+
+    let pendingSpotFocusTimer = 0;
+    let pendingSpotFocusFrame = 0;
+    let spotFocusSequence = 0;
+
+    function cancelPendingSpotFocus() {
+        spotFocusSequence += 1;
+        if (pendingSpotFocusTimer) window.clearTimeout(pendingSpotFocusTimer);
+        if (pendingSpotFocusFrame) window.cancelAnimationFrame(pendingSpotFocusFrame);
+        pendingSpotFocusTimer = 0;
+        pendingSpotFocusFrame = 0;
     }
 
     function focusSpotOnMap(spot) {
@@ -4302,13 +4236,18 @@ document.addEventListener("DOMContentLoaded", function () {
         const lng = Number(spot?.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-        // Wait until the detail sheet and collapsed bottom tray have completed
-        // their layout for this frame. This prevents the marker being centered
-        // using the previous (smaller) unobstructed area.
-        window.requestAnimationFrame(function () {
-            if (!map || !map.getContainer().isConnected) return;
-            focusCoordinateOnMap([lat, lng], { duration: 0.85 });
-        });
+        // A rapid second selection replaces the first pending camera move.
+        cancelPendingSpotFocus();
+        const sequence = spotFocusSequence;
+        // Wait for the spot detail sheet transition before measuring the clear map area.
+        pendingSpotFocusTimer = window.setTimeout(function () {
+            pendingSpotFocusTimer = 0;
+            pendingSpotFocusFrame = window.requestAnimationFrame(function () {
+                pendingSpotFocusFrame = 0;
+                if (sequence !== spotFocusSequence || !map || !map.getContainer().isConnected) return;
+                focusCoordinateOnMap([lat, lng], { duration: 780 });
+            });
+        }, 380);
     }
 
     function routeSetupText(key) {
@@ -5000,6 +4939,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function hideSpotDetail() {
         if (!mapSpotDetail) return;
+        cancelPendingSpotFocus();
         mapSpotDetail.hidden = true;
         mapSpotDetail.classList.remove("is-expanded", "is-compact", "is-route-mode");
         plannerWorkspace?.classList.remove("has-spot-detail", "has-route-planner");
@@ -5506,6 +5446,7 @@ document.addEventListener("DOMContentLoaded", function () {
     map.on("click", closeSpotQuickPalette);
     map.on("movestart zoomstart resize", closeSpotQuickPalette);
     map.on("dragstart", disableNavigationFollowByGesture);
+    window.addEventListener("fushimi:map-user-moved", disableNavigationFollowByGesture);
 
     navFollowButton?.addEventListener("click", function (event) {
         event.preventDefault();
@@ -7945,7 +7886,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // All visual layers now share exactly one route geometry.
         const routePathsForDisplay = [completeJourneyPath];
-        map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
+        const journeyBounds = routeLine.getBounds();
+        if (window.FushimiMapEngine?.fitBounds) {
+            window.FushimiMapEngine.fitBounds([
+                [journeyBounds.getWest(), journeyBounds.getSouth()],
+                [journeyBounds.getEast(), journeyBounds.getNorth()]
+            ], { padding: { top: 110, right: 56, bottom: 200, left: 56 }, maxZoom: 17, duration: 700 });
+        } else {
+            map.fitBounds(journeyBounds, { padding: [40, 40] });
+        }
         renderRouteNumberMarkers(routeTargets);
 
         const routeDistance = calculateRoutePathsDistance(routePathsForDisplay);
@@ -7982,6 +7931,10 @@ document.addEventListener("DOMContentLoaded", function () {
             navArrival.textContent = "";
         }
         updateNavigationPanel();
+        if (navigationLegs[0]?.geometry) {
+            const firstManeuver = getUpcomingManeuver(navigationLegs[0].geometry, { alongMeters: 0 });
+            setNavigationManeuver(firstManeuver.type, firstManeuver.distanceMeters);
+        }
         if (routeOptions?.destinationSpot) hideSpotDetail();
         setFoodCategorySwitcherOpen(false);
         setPlannerSheetState("collapsed");
@@ -8036,6 +7989,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive = true;
         navigationFollow = true;
+        lastNavigationFollowPosition = null;
+        window.FushimiMapEngine?.setNavigationMode?.(true);
         if (navFollowButton) {
             navFollowButton.textContent = getNavigationFollowLabel();
             navFollowButton.hidden = true;
@@ -8087,7 +8042,9 @@ document.addEventListener("DOMContentLoaded", function () {
                                 Number(
                                     position.coords.accuracy ||
                                     0
-                                )
+                                ),
+                            heading: Number.isFinite(position.coords.heading) ? position.coords.heading : null,
+                            speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null
                         };
 
                     setCurrentLocation(value, false);
@@ -8142,6 +8099,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive = false;
         navigationFollow = true;
+        window.FushimiMapEngine?.setNavigationMode?.(false);
+        lastNavigationFollowPosition = null;
         setNavigationManeuver(null);
         if (navFollowButton) navFollowButton.hidden = true;
 
@@ -8352,11 +8311,26 @@ document.addEventListener("DOMContentLoaded", function () {
         navManeuver.dataset.direction = type;
     }
 
+    let lastNavigationFollowPosition = null;
     function panNavigationToLocation(location) {
         if (!navigationActive || !navigationFollow || !location) return;
-        const targetCenter = getMapCenterForCoordinate([location.lat, location.lng], map.getZoom());
-        if (map.distance(map.getCenter(), targetCenter) < 12) return;
-        map.panTo(targetCenter, { animate: true, duration: 0.38, easeLinearity: 0.25 });
+        if (lastNavigationFollowPosition) {
+            const moved = map.distance([lastNavigationFollowPosition.lat, lastNavigationFollowPosition.lng], [location.lat, location.lng]);
+            if (moved < 2.5) return;
+        }
+        lastNavigationFollowPosition = { lat: location.lat, lng: location.lng };
+        if (window.FushimiMapEngine?.followLocation) {
+            window.FushimiMapEngine.followLocation({
+                lat: location.lat, lng: location.lng,
+                heading: location.heading, speed: location.speed, accuracy: location.accuracy,
+                targetPoint: getVisibleMapFocusPoint(),
+                zoom: Math.max(17, Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 17)), duration: 650
+            });
+        } else {
+            const currentZoom = Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 17);
+            const targetCenter = getMapCenterForCoordinate([location.lat, location.lng], currentZoom);
+            map.panTo(targetCenter, { animate: true, duration: 0.38, easeLinearity: 0.25 });
+        }
     }
 
     function getNavigationFollowLabel() {
@@ -8380,11 +8354,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function enableNavigationFollow() {
         navigationFollow = true;
+        lastNavigationFollowPosition = null;
         if (navFollowButton) navFollowButton.hidden = true;
-        if (currentLocation) {
-            const targetCenter = getMapCenterForCoordinate([currentLocation.lat, currentLocation.lng], map.getZoom());
-            map.panTo(targetCenter, { animate: true, duration: 0.42, easeLinearity: 0.25 });
-        }
+        if (currentLocation) panNavigationToLocation(currentLocation);
     }
 
     function updateNavigationPanel() {
@@ -8568,6 +8540,14 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             updateNavigationPanel();
+            const nextLeg = navigationLegs[navigationLegIndex];
+            if (nextLeg?.geometry) {
+                const nextProgress = getNavigationProgress(nextLeg.geometry, location);
+                const nextManeuver = getUpcomingManeuver(nextLeg.geometry, nextProgress);
+                setNavigationManeuver(nextManeuver.type, nextManeuver.distanceMeters);
+            } else {
+                setNavigationManeuver("straight");
+            }
         }
     }
 
@@ -8607,6 +8587,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive =
             false;
+        window.FushimiMapEngine?.setNavigationMode?.(false);
 
         if (
             navigationWatchId !==
@@ -8809,20 +8790,12 @@ document.addEventListener("DOMContentLoaded", function () {
             );
         }
 
-        if (centerMap
-        ) {
-
-            map.setView(
-                [
-                    value.lat,
-                    value.lng
-                ],
-                18,
-                {
-                    animate:
-                        true
-                }
-            );
+        if (centerMap) {
+            if (window.FushimiMapEngine?.easeToCoordinate) {
+                window.FushimiMapEngine.easeToCoordinate([value.lat, value.lng], getVisibleMapFocusPoint(), 18, 720);
+            } else {
+                map.setView([value.lat, value.lng], 18, { animate: true });
+            }
         }
 
         updateNavPanelForRoute();
@@ -8839,17 +8812,11 @@ document.addEventListener("DOMContentLoaded", function () {
                     const location =
                         await ensureCurrentLocation();
 
-                    map.setView(
-                        [
-                            location.lat,
-                            location.lng
-                        ],
-                        18,
-                        {
-                            animate:
-                                true
-                        }
-                    );
+                    if (window.FushimiMapEngine?.easeToCoordinate) {
+                        window.FushimiMapEngine.easeToCoordinate([location.lat, location.lng], getVisibleMapFocusPoint(), 18, 720);
+                    } else {
+                        map.setView([location.lat, location.lng], 18, { animate: true });
+                    }
 
                     if (
                         currentLocationMarker

@@ -6829,3 +6829,163 @@ body.planner-page .liquid-cursor {
     font-size: 19px;
   }
 }
+
+
+/* ============================================================
+   V165 — MapLibre 3D basemap + transparent Leaflet overlay
+   Leaflet is retained only for existing SVG pins, paths and popups.
+============================================================ */
+#map {
+    position: absolute !important;
+    isolation: isolate;
+    overflow: hidden !important;
+    background: #e9edf0 !important;
+}
+#maplibreBase {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    background: #e9edf0;
+    touch-action: none;
+}
+#maplibreBase .maplibregl-canvas-container,
+#maplibreBase .maplibregl-canvas {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+#maplibreBase .maplibregl-canvas { display: block; outline: none; }
+#map .leaflet-container,
+#map.leaflet-container { background: transparent !important; }
+#map .leaflet-tile-pane,
+#map .leaflet-control-zoom,
+#map .leaflet-control-attribution { display: none !important; }
+/* Pass background gestures through to MapLibre; pins remain interactive. */
+#map .leaflet-map-pane { z-index: 400 !important; pointer-events: none !important; }
+#map .leaflet-marker-icon { pointer-events: auto !important; }
+#map .leaflet-marker-shadow,
+#map .leaflet-interactive { pointer-events: none !important; }
+#map .leaflet-popup-pane,
+#map .leaflet-popup { pointer-events: auto !important; }
+#map .leaflet-marker-icon {
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+#maplibreBase .maplibregl-ctrl-bottom-right {
+    z-index: 900 !important;
+    right: 8px !important;
+    bottom: 8px !important;
+}
+#maplibreBase .maplibregl-ctrl-attrib {
+    max-width: min(70vw, 420px);
+    border-radius: 9px 0 0 0;
+    background: rgba(255,255,255,.78) !important;
+    color: #45505a;
+    font-size: 9px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.maplibre-status {
+    position: absolute;
+    z-index: 2400;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: min(88%, 360px);
+    box-sizing: border-box;
+    padding: 17px 20px;
+    border: 1px solid rgba(255,255,255,.9);
+    border-radius: 18px;
+    background: rgba(255,255,255,.9);
+    color: #32383e;
+    box-shadow: 0 12px 34px rgba(20,30,40,.14);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+}
+.maplibre-status[hidden],
+.maplibre-status button[hidden] { display: none !important; }
+.maplibre-status button {
+    min-height: 36px;
+    padding: 7px 16px;
+    border: 0;
+    border-radius: 999px;
+    background: #30343a;
+    color: white;
+    font: inherit;
+    cursor: pointer;
+}
+.maplibre-camera-control {
+    position: absolute;
+    z-index: 960;
+    top: 104px;
+    left: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+.maplibre-camera-button {
+    width: 46px;
+    height: 42px;
+    border: 1px solid rgba(255,255,255,.92);
+    border-radius: 14px;
+    background: rgba(255,255,255,.88);
+    color: #27312c;
+    box-shadow: 0 7px 19px rgba(20,30,24,.12), inset 0 1px 0 white;
+    font: 800 13px/1 system-ui, sans-serif;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    pointer-events: auto;
+    cursor: pointer;
+}
+.maplibre-camera-hint {
+    padding: 7px 10px;
+    border: 1px solid rgba(255,255,255,.86);
+    border-radius: 999px;
+    background: rgba(255,255,255,.76);
+    color: #515b55;
+    font: 650 10px/1.2 system-ui, sans-serif;
+    box-shadow: 0 5px 14px rgba(20,30,24,.08);
+    pointer-events: none;
+}
+@media (max-width: 700px) {
+    .maplibre-camera-control { top: calc(100px + env(safe-area-inset-top)); left: 10px; }
+    .maplibre-camera-button { width: 42px; height: 39px; border-radius: 12px; }
+    .maplibre-camera-hint { display: none; }
+    #maplibreBase .maplibregl-ctrl-bottom-right { right: 4px !important; bottom: 4px !important; }
+    #maplibreBase .maplibregl-ctrl-attrib { font-size: 8px; }
+}
+
+/* Keep spot pins light while the 3D camera is moving; restore their full glass
+   treatment as soon as movement stops. The SVG artwork and category colors stay unchanged. */
+#map.is-camera-moving .leaflet-marker-icon {
+    transition: none !important;
+}
+#map.is-camera-moving .custom-map-marker .marker-pin {
+    box-shadow: 0 0 0 1px rgba(255,255,255,.74) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    transition: none !important;
+}
+#map.is-camera-moving .custom-map-marker .icon-image {
+    filter: none !important;
+    transition: none !important;
+}
+#map.is-camera-moving .custom-map-marker .marker-accent,
+#map.is-camera-moving .marker-name-glass {
+    transition: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
