@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment, v170)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment, v171)
  * MapLibre owns the base-map camera (pan / zoom / pitch / bearing).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -194,24 +194,6 @@
         });
     }
 
-    // JR奈良線・京阪本線は、ベースマップの表示名ラベルを検索して色を付けるのではなく、
-    // OpenStreetMapの路線リレーション形状をGeoJSONとして取得し、専用線で重ねる。
-    // これにより transportation_name の名前フィールドや地図スタイルのラベル設定に依存しない。
-    const OSM_RAIL_RELATIONS = [
-        { id: "jr-nara", relationId: 11370565, label: "JR奈良線", color: "#8B5A2B" },
-        { id: "keihan-main", relationId: 1921059, label: "京阪本線", color: "#174A72" }
-    ];
-    const RAIL_GEOMETRY_CACHE_KEY = "fushimi-smart-guide-rail-geometry-v170";
-    const RAIL_GEOMETRY_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
-    // 伏見稲荷周辺に限定して取得・描画する範囲（南, 西, 北, 東）。
-    const RAIL_GEOMETRY_BBOX = { south: 34.947, west: 135.750, north: 34.988, east: 135.802 };
-    const OVERPASS_ENDPOINTS = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter"
-    ];
-    let railGeoJson = null;
-    let railGeoJsonPromise = null;
-
     function getVectorSourceId() {
         const sources = (mapLibreMap && mapLibreMap.getStyle() && mapLibreMap.getStyle().sources) || {};
         const entries = Object.entries(sources);
@@ -223,6 +205,23 @@
         return anyVectorSource ? anyVectorSource[0] : null;
     }
 
+    // JR奈良線・京阪本線は、ベースマップの表示名ラベルを検索して色を付けるのではなく、
+    // OpenStreetMapの路線リレーション形状をGeoJSONとして取得し、専用線で重ねる。
+    // これにより transportation_name の名前フィールドや地図スタイルのラベル設定に依存しない。
+    const OSM_RAIL_RELATIONS = [
+        { id: "jr-nara", relationId: 11370565, label: "JR奈良線", color: "#8B5A2B" },
+        { id: "keihan-main", relationId: 1921059, label: "京阪本線", color: "#174A72" }
+    ];
+    const RAIL_GEOMETRY_CACHE_KEY = "fushimi-smart-guide-rail-geometry-v171";
+    const RAIL_GEOMETRY_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+    const RAIL_GEOMETRY_BBOX = { south: 34.947, west: 135.750, north: 34.988, east: 135.802 };
+    const OVERPASS_ENDPOINTS = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter"
+    ];
+    let railGeoJson = null;
+    let railGeoJsonPromise = null;
+
     function getCachedRailGeoJson() {
         try {
             const raw = window.localStorage.getItem(RAIL_GEOMETRY_CACHE_KEY);
@@ -231,108 +230,144 @@
             if (!cached || !Number.isFinite(cached.savedAt) ||
                 Date.now() - cached.savedAt > RAIL_GEOMETRY_CACHE_TTL ||
                 !cached.data || !Array.isArray(cached.data.features) || cached.data.features.length === 0) return null;
-            return cached.data;
+            const hasBothLines = OSM_RAIL_RELATIONS.every((route) =>
+                cached.data.features.some((feature) => feature.properties?.routeId === route.id)
+            );
+            return hasBothLines ? cached.data : null;
         } catch (_) {
             return null;
         }
     }
 
-    function featureTouchesFushimiBbox(geometry) {
-        return Array.isArray(geometry) && geometry.some((point) =>
-            Number.isFinite(point?.lat) && Number.isFinite(point?.lon) &&
-            point.lat >= RAIL_GEOMETRY_BBOX.south && point.lat <= RAIL_GEOMETRY_BBOX.north &&
-            point.lon >= RAIL_GEOMETRY_BBOX.west && point.lon <= RAIL_GEOMETRY_BBOX.east
-        );
+    function geometryTouchesFushimiBbox(points) {
+        if (!Array.isArray(points) || points.length < 2) return false;
+        let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+        points.forEach((point) => {
+            if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return;
+            minLat = Math.min(minLat, point.lat);
+            maxLat = Math.max(maxLat, point.lat);
+            minLon = Math.min(minLon, point.lon);
+            maxLon = Math.max(maxLon, point.lon);
+        });
+        return maxLat >= RAIL_GEOMETRY_BBOX.south && minLat <= RAIL_GEOMETRY_BBOX.north &&
+            maxLon >= RAIL_GEOMETRY_BBOX.west && minLon <= RAIL_GEOMETRY_BBOX.east;
     }
 
-    function buildRailGeoJson(osmData) {
-        const relations = new Map((osmData?.elements || [])
-            .filter((element) => element.type === "relation")
-            .map((element) => [Number(element.id), element]));
+    function getWayGeometry(way, nodesById) {
+        if (Array.isArray(way.geometry) && way.geometry.length >= 2) {
+            return way.geometry
+                .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lon));
+        }
+        if (Array.isArray(way.nodes) && nodesById) {
+            return way.nodes.map((nodeId) => nodesById.get(Number(nodeId)))
+                .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lon));
+        }
+        return [];
+    }
+
+    function buildRouteFeatures(osmData, route) {
+        const elements = Array.isArray(osmData?.elements) ? osmData.elements : [];
+        const nodesById = new Map(elements
+            .filter((element) => element.type === "node" && Number.isFinite(element.lat) && Number.isFinite(element.lon))
+            .map((node) => [Number(node.id), { lat: node.lat, lon: node.lon }]));
+        const ways = new Map(elements
+            .filter((element) => element.type === "way")
+            .map((way) => [Number(way.id), way]));
         const features = [];
 
-        OSM_RAIL_RELATIONS.forEach((route) => {
-            const relation = relations.get(route.relationId);
-            if (!relation || !Array.isArray(relation.members)) {
-                console.warn(`[Fushimi Map] OSM route relation not found: ${route.relationId}`);
-                return;
-            }
-            relation.members.forEach((member) => {
-                if (member.type !== "way" || !Array.isArray(member.geometry) || member.geometry.length < 2) return;
-                if (!featureTouchesFushimiBbox(member.geometry)) return;
-                const coordinates = member.geometry
-                    .filter((point) => Number.isFinite(point?.lon) && Number.isFinite(point?.lat))
-                    .map((point) => [point.lon, point.lat]);
-                if (coordinates.length < 2) return;
-                features.push({
-                    type: "Feature",
-                    properties: { routeId: route.id, routeName: route.label, osmWayId: Number(member.ref) || null },
-                    geometry: { type: "LineString", coordinates }
-                });
+        ways.forEach((way) => {
+            const points = getWayGeometry(way, nodesById);
+            if (points.length < 2 || !geometryTouchesFushimiBbox(points)) return;
+            const coordinates = points.map((point) => [point.lon, point.lat]);
+            features.push({
+                type: "Feature",
+                properties: { routeId: route.id, routeName: route.label, osmWayId: Number(way.id) || null },
+                geometry: { type: "LineString", coordinates }
             });
         });
+        return features;
+    }
 
-        const foundRoutes = new Set(features.map((feature) => feature.properties.routeId));
-        const missingRoutes = OSM_RAIL_RELATIONS.filter((route) => !foundRoutes.has(route.id));
-        if (missingRoutes.length) {
-            throw new Error(`路線形状を確認できませんでした: ${missingRoutes.map((route) => route.label).join("・")}`);
+    async function fetchOverpassRoute(route, endpoint) {
+        // `>>` recursively expands nested route relations, not just direct way members.
+        const query = [
+            "[out:json][timeout:60];",
+            `relation(${route.relationId});`,
+            ">>;",
+            "out geom;"
+        ].join("\n");
+        const controller = typeof AbortController === "function" ? new AbortController() : null;
+        const timeoutId = controller ? window.setTimeout(() => controller.abort(), 45000) : 0;
+        try {
+            const response = await window.fetch(endpoint, {
+                method: "POST",
+                mode: "cors",
+                credentials: "omit",
+                headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+                body: `data=${encodeURIComponent(query)}`,
+                signal: controller ? controller.signal : undefined
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (payload?.remark) throw new Error(String(payload.remark).slice(0, 160));
+            return payload;
+        } finally {
+            if (timeoutId) window.clearTimeout(timeoutId);
         }
-        return { type: "FeatureCollection", features };
+    }
+
+    async function requestOneRailRoute(route) {
+        const errors = [];
+        for (const endpoint of OVERPASS_ENDPOINTS) {
+            try {
+                const payload = await fetchOverpassRoute(route, endpoint);
+                const features = buildRouteFeatures(payload, route);
+                if (!features.length) throw new Error("取得データ内に伏見稲荷周辺の線分が0件でした");
+                return features;
+            } catch (error) {
+                errors.push(`${new URL(endpoint).hostname}: ${error?.message || "取得失敗"}`);
+                console.warn(`[Fushimi Map] ${route.label} OSM route request failed at ${endpoint}:`, error);
+            }
+        }
+        throw new Error(`${route.label}: ${errors.join(" / ")}`);
     }
 
     async function requestOverpassRailGeoJson() {
-        const query = [
-            "[out:json][timeout:25];",
-            "(",
-            "  relation(11370565);",
-            "  relation(1921059);",
-            ");",
-            "out geom;"
-        ].join("\n");
-        let lastError = null;
-
-        for (const endpoint of OVERPASS_ENDPOINTS) {
-            const url = `${endpoint}?data=${encodeURIComponent(query)}`;
+        // 片方の事業者データが失敗しても、取得できた路線だけは先に表示する。
+        const result = await Promise.all(OSM_RAIL_RELATIONS.map(async (route) => {
             try {
-                const controller = typeof AbortController === "function" ? new AbortController() : null;
-                const timeoutId = controller ? window.setTimeout(() => controller.abort(), 18000) : 0;
-                let response;
-                try {
-                    response = await window.fetch(url, {
-                        method: "GET",
-                        mode: "cors",
-                        credentials: "omit",
-                        signal: controller ? controller.signal : undefined
-                    });
-                } finally {
-                    if (timeoutId) window.clearTimeout(timeoutId);
-                }
-                if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
-                const payload = await response.json();
-                const data = buildRailGeoJson(payload);
-                try {
-                    window.localStorage.setItem(RAIL_GEOMETRY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
-                } catch (_) {
-                    // localStorage容量制限・プライベートモード時も、今回の表示は継続する。
-                }
-                return data;
+                return { route, features: await requestOneRailRoute(route), error: "" };
             } catch (error) {
-                lastError = error;
-                console.warn(`[Fushimi Map] Railway geometry request failed at ${endpoint}:`, error);
+                return { route, features: [], error: error?.message || "取得失敗" };
+            }
+        }));
+        const features = result.flatMap((entry) => entry.features);
+        if (!features.length) {
+            throw new Error(result.map((entry) => entry.error).filter(Boolean).join(" / ") || "路線データが0件でした");
+        }
+        const counts = Object.fromEntries(result.map((entry) => [entry.route.id, entry.features.length]));
+        const errors = result.filter((entry) => entry.error).map((entry) => entry.error);
+        const data = { type: "FeatureCollection", features, counts, errors };
+        // 両路線そろった時だけ長期キャッシュ。片方だけの不完全データを固定しない。
+        if (!errors.length) {
+            try {
+                window.localStorage.setItem(RAIL_GEOMETRY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+            } catch (_) {
+                // localStorage容量制限時も、今回の表示は継続する。
             }
         }
-        throw lastError || new Error("鉄道路線データを取得できませんでした。");
+        return data;
     }
 
-    function createRailLineLegend(state = "loading") {
+    function createRailLineLegend(state = "loading", detail = "") {
         const host = document.querySelector(".planner-map-section");
         if (!host) return;
         let legend = host.querySelector(".maplibre-rail-legend");
         if (!legend) {
             legend = document.createElement("div");
             legend.className = "maplibre-rail-legend";
-            legend.setAttribute("role", "note");
-            legend.setAttribute("aria-label", "鉄道路線の色分け");
+            legend.setAttribute("role", "status");
+            legend.setAttribute("aria-label", "鉄道路線の色分け状態");
             host.appendChild(legend);
         }
         const items = OSM_RAIL_RELATIONS.map((route) => `
@@ -341,9 +376,10 @@
                 <span>${route.label}</span>
             </div>
         `).join("");
-        const message = state === "loading" ? "路線データを読み込み中" :
-            state === "error" ? "路線データを取得できませんでした" : "";
-        legend.innerHTML = `${items}${message ? `<div class="maplibre-rail-legend-status">${message}</div>` : ""}`;
+        const statusText = state === "loading" ? "路線データを読み込み中" :
+            state === "error" ? `色分け未適用：${detail || "路線データを取得できませんでした"}` :
+            detail || "色分けを適用しました";
+        legend.innerHTML = `${items}<div class="maplibre-rail-legend-status">${statusText}</div>`;
         legend.dataset.status = state;
     }
 
@@ -356,22 +392,23 @@
                 mapLibreMap.addSource("fushimi-osm-rail-routes", { type: "geojson", data });
             }
 
-            const firstSymbol = (mapLibreMap.getStyle()?.layers || []).find((layer) => layer.type === "symbol");
-            const beforeId = firstSymbol ? firstSymbol.id : undefined;
-            const width = ["interpolate", ["linear"], ["zoom"], 11, 2.2, 14, 3.6, 18, 5.2];
-            const casingWidth = ["interpolate", ["linear"], ["zoom"], 11, 3.8, 14, 5.6, 18, 7.4];
+            // 最前面に追加する。first-symbol直前だと3D建物や他レイヤーに隠れるスタイルがある。
+            const width = ["interpolate", ["linear"], ["zoom"], 11, 4.2, 14, 5.8, 18, 7.8];
+            const casingWidth = ["interpolate", ["linear"], ["zoom"], 11, 6.8, 14, 8.4, 18, 10.4];
 
-            if (!mapLibreMap.getLayer("fushimi-osm-rail-casing")) {
+            const casingId = "fushimi-osm-rail-casing";
+            if (!mapLibreMap.getLayer(casingId)) {
                 mapLibreMap.addLayer({
-                    id: "fushimi-osm-rail-casing",
+                    id: casingId,
                     type: "line",
                     source: "fushimi-osm-rail-routes",
-                    minzoom: 11,
+                    minzoom: 10,
                     layout: { "line-cap": "round", "line-join": "round" },
-                    paint: { "line-color": "#ffffff", "line-width": casingWidth, "line-opacity": 0.98 }
-                }, beforeId);
-            } else if (beforeId) {
-                mapLibreMap.moveLayer("fushimi-osm-rail-casing", beforeId);
+                    paint: { "line-color": "#ffffff", "line-width": casingWidth, "line-opacity": 1 }
+                });
+            } else {
+                mapLibreMap.setPaintProperty(casingId, "line-width", casingWidth);
+                mapLibreMap.moveLayer(casingId);
             }
 
             OSM_RAIL_RELATIONS.forEach((route) => {
@@ -381,20 +418,33 @@
                         id: layerId,
                         type: "line",
                         source: "fushimi-osm-rail-routes",
-                        minzoom: 11,
+                        minzoom: 10,
                         filter: ["==", ["get", "routeId"], route.id],
                         layout: { "line-cap": "round", "line-join": "round" },
                         paint: { "line-color": route.color, "line-width": width, "line-opacity": 1 }
-                    }, beforeId);
-                } else if (beforeId) {
-                    mapLibreMap.moveLayer(layerId, beforeId);
+                    });
+                } else {
+                    mapLibreMap.setFilter(layerId, ["==", ["get", "routeId"], route.id]);
+                    mapLibreMap.setPaintProperty(layerId, "line-color", route.color);
+                    mapLibreMap.setPaintProperty(layerId, "line-width", width);
+                    mapLibreMap.moveLayer(layerId);
                 }
             });
-            createRailLineLegend("ready");
-            console.info(`[Fushimi Map] OSM railway overlay added: ${data.features.length} local track segments.`);
+
+            // Add/move casing first and then both colored lines to keep the colored strokes above the white outline.
+            mapLibreMap.moveLayer(casingId);
+            OSM_RAIL_RELATIONS.forEach((route) => mapLibreMap.moveLayer(`fushimi-osm-rail-${route.id}`));
+
+            const jrCount = data.counts?.["jr-nara"] ?? data.features.filter((f) => f.properties?.routeId === "jr-nara").length;
+            const keihanCount = data.counts?.["keihan-main"] ?? data.features.filter((f) => f.properties?.routeId === "keihan-main").length;
+            const detail = data.errors?.length
+                ? `一部のみ適用（JR ${jrCount}区間・京阪 ${keihanCount}区間）: ${data.errors.join(" / ")}`
+                : `適用済み（JR ${jrCount}区間・京阪 ${keihanCount}区間）`;
+            createRailLineLegend(data.errors?.length ? "partial" : "ready", detail);
+            console.info(`[Fushimi Map] Railway overlay visible on top: JR ${jrCount}, Keihan ${keihanCount} segments.`, data.errors || []);
         } catch (error) {
             console.error("[Fushimi Map] Railway GeoJSON overlay could not be installed:", error);
-            createRailLineLegend("error");
+            createRailLineLegend("error", error?.message || "地図レイヤーの追加に失敗しました");
         }
     }
 
@@ -422,7 +472,7 @@
             })
             .catch((error) => {
                 console.error("[Fushimi Map] Railway line colors are unavailable:", error);
-                createRailLineLegend("error");
+                createRailLineLegend("error", error?.message || "路線データを取得できませんでした");
                 railGeoJsonPromise = null;
                 return null;
             });
