@@ -6970,6 +6970,15 @@ body.planner-page .liquid-cursor {
     background: var(--rail-line-color);
     box-shadow: 0 0 0 1px rgba(30,40,50,.08);
 }
+.maplibre-rail-legend-status {
+    padding-top: 2px;
+    color: #86513f;
+    font-size: 9px;
+    font-weight: 650;
+}
+.maplibre-rail-legend[data-status="error"] {
+    border-color: rgba(190, 90, 70, .45);
+}
 .maplibre-camera-button {
     width: 46px;
     height: 42px;

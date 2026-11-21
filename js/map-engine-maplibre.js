@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment, v170)
  * MapLibre owns the base-map camera (pan / zoom / pitch / bearing).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -15,24 +15,6 @@
     const DEFAULT_PITCH = 48;
     const NAVIGATION_PITCH = 52;
     const MAX_PITCH = 60;
-
-    // 伏見稲荷周辺で案内対象にする鉄道路線だけに専用色を割り当てる。
-    // JR奈良線はJR西日本のD（茶系）を参考に、京阪本線は京阪の濃青系で表示。
-    const RAIL_LINE_STYLES = [
-        {
-            id: "jr-nara",
-            label: "JR奈良線",
-            color: "#8B5A2B",
-            aliases: ["奈良線", "JR奈良線", "Nara Line", "JR Nara Line"]
-        },
-        {
-            id: "keihan-main",
-            label: "京阪本線",
-            color: "#174A72",
-            aliases: ["京阪本線", "京阪線", "Keihan Main Line", "Keihan Line"]
-        }
-    ];
-    const NEUTRAL_RAIL_COLOR = "#bfc5ca";
 
     let mapLibreMap = null;
     let leafletMap = null;
@@ -212,6 +194,24 @@
         });
     }
 
+    // JR奈良線・京阪本線は、ベースマップの表示名ラベルを検索して色を付けるのではなく、
+    // OpenStreetMapの路線リレーション形状をGeoJSONとして取得し、専用線で重ねる。
+    // これにより transportation_name の名前フィールドや地図スタイルのラベル設定に依存しない。
+    const OSM_RAIL_RELATIONS = [
+        { id: "jr-nara", relationId: 11370565, label: "JR奈良線", color: "#8B5A2B" },
+        { id: "keihan-main", relationId: 1921059, label: "京阪本線", color: "#174A72" }
+    ];
+    const RAIL_GEOMETRY_CACHE_KEY = "fushimi-smart-guide-rail-geometry-v170";
+    const RAIL_GEOMETRY_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+    // 伏見稲荷周辺に限定して取得・描画する範囲（南, 西, 北, 東）。
+    const RAIL_GEOMETRY_BBOX = { south: 34.947, west: 135.750, north: 34.988, east: 135.802 };
+    const OVERPASS_ENDPOINTS = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter"
+    ];
+    let railGeoJson = null;
+    let railGeoJsonPromise = null;
+
     function getVectorSourceId() {
         const sources = (mapLibreMap && mapLibreMap.getStyle() && mapLibreMap.getStyle().sources) || {};
         const entries = Object.entries(sources);
@@ -219,143 +219,213 @@
         if (preferred) return preferred[0];
         const openFreeMap = entries.find(([id, source]) => source && source.type === "vector" && /openfreemap|openmaptiles/i.test(`${id} ${source.url || ""}`));
         if (openFreeMap) return openFreeMap[0];
-        // OpenFreeMap のスタイルでソースIDが変更されても、唯一のベクターソースを利用する。
         const anyVectorSource = entries.find(([, source]) => source && source.type === "vector");
         return anyVectorSource ? anyVectorSource[0] : null;
     }
 
-    function makeRailRouteNameFilter(aliases) {
-        // OpenMapTiles の transportation_name は railway の種別を class="rail" で持つ。
-        // subclass="rail" だけで絞ると対象が0件になるため、class/subclass両方を許容する。
-        // 路線名は name / route_N_name などの属性に入るため、完全一致ではなく部分一致で判定する。
-        const nameFields = [
-            "name", "name_en", "name_de", "name:en", "name:ja", "name:nonlatin",
-            "name_int", "ref", "route_1_name", "route_2_name", "route_3_name",
-            "route_4_name", "route_5_name", "route_6_name"
-        ];
-        const nameMatches = [];
-        nameFields.forEach((field) => {
-            const value = ["downcase", ["to-string", ["coalesce", ["get", field], ""]]];
-            aliases.forEach((alias) => {
-                nameMatches.push(["!=", ["index-of", alias.toLowerCase(), value], -1]);
+    function getCachedRailGeoJson() {
+        try {
+            const raw = window.localStorage.getItem(RAIL_GEOMETRY_CACHE_KEY);
+            if (!raw) return null;
+            const cached = JSON.parse(raw);
+            if (!cached || !Number.isFinite(cached.savedAt) ||
+                Date.now() - cached.savedAt > RAIL_GEOMETRY_CACHE_TTL ||
+                !cached.data || !Array.isArray(cached.data.features) || cached.data.features.length === 0) return null;
+            return cached.data;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function featureTouchesFushimiBbox(geometry) {
+        return Array.isArray(geometry) && geometry.some((point) =>
+            Number.isFinite(point?.lat) && Number.isFinite(point?.lon) &&
+            point.lat >= RAIL_GEOMETRY_BBOX.south && point.lat <= RAIL_GEOMETRY_BBOX.north &&
+            point.lon >= RAIL_GEOMETRY_BBOX.west && point.lon <= RAIL_GEOMETRY_BBOX.east
+        );
+    }
+
+    function buildRailGeoJson(osmData) {
+        const relations = new Map((osmData?.elements || [])
+            .filter((element) => element.type === "relation")
+            .map((element) => [Number(element.id), element]));
+        const features = [];
+
+        OSM_RAIL_RELATIONS.forEach((route) => {
+            const relation = relations.get(route.relationId);
+            if (!relation || !Array.isArray(relation.members)) {
+                console.warn(`[Fushimi Map] OSM route relation not found: ${route.relationId}`);
+                return;
+            }
+            relation.members.forEach((member) => {
+                if (member.type !== "way" || !Array.isArray(member.geometry) || member.geometry.length < 2) return;
+                if (!featureTouchesFushimiBbox(member.geometry)) return;
+                const coordinates = member.geometry
+                    .filter((point) => Number.isFinite(point?.lon) && Number.isFinite(point?.lat))
+                    .map((point) => [point.lon, point.lat]);
+                if (coordinates.length < 2) return;
+                features.push({
+                    type: "Feature",
+                    properties: { routeId: route.id, routeName: route.label, osmWayId: Number(member.ref) || null },
+                    geometry: { type: "LineString", coordinates }
+                });
             });
         });
 
-        return [
-            "all",
-            ["any", ["==", ["get", "class"], "rail"], ["==", ["get", "subclass"], "rail"]],
-            ["any", ...nameMatches]
-        ];
+        const foundRoutes = new Set(features.map((feature) => feature.properties.routeId));
+        const missingRoutes = OSM_RAIL_RELATIONS.filter((route) => !foundRoutes.has(route.id));
+        if (missingRoutes.length) {
+            throw new Error(`路線形状を確認できませんでした: ${missingRoutes.map((route) => route.label).join("・")}`);
+        }
+        return { type: "FeatureCollection", features };
     }
 
-    function addNamedRailHighlightLayers() {
-        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
-        const sourceId = getVectorSourceId();
-        if (!sourceId) {
-            console.warn("[Fushimi Map] 鉄道路線の色分け: ベクター地図ソースが見つかりません。");
-            return;
-        }
-        const style = mapLibreMap.getStyle();
-        const source = style && style.sources && style.sources[sourceId];
-        if (!source || source.type !== "vector") return;
+    async function requestOverpassRailGeoJson() {
+        const query = [
+            "[out:json][timeout:25];",
+            "(",
+            "  relation(11370565);",
+            "  relation(1921059);",
+            ");",
+            "out geom;"
+        ].join("\n");
+        let lastError = null;
 
-        const firstSymbol = (style.layers || []).find((layer) => layer.type === "symbol");
-        const beforeId = firstSymbol ? firstSymbol.id : undefined;
-
-        // 全路線は薄いグレーで統一。対象2路線だけを下の専用レイヤーで上書きする。
-        const neutralId = "fushimi-all-rail-neutral";
-        if (!mapLibreMap.getLayer(neutralId)) {
+        for (const endpoint of OVERPASS_ENDPOINTS) {
+            const url = `${endpoint}?data=${encodeURIComponent(query)}`;
             try {
-                mapLibreMap.addLayer({
-                    id: neutralId,
-                    type: "line",
-                    source: sourceId,
-                    "source-layer": "transportation",
-                    minzoom: 8,
-                    filter: ["any", ["==", ["get", "subclass"], "rail"], ["==", ["get", "class"], "rail"]],
-                    layout: { "line-cap": "round", "line-join": "round" },
-                    paint: {
-                        "line-color": NEUTRAL_RAIL_COLOR,
-                        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.9, 13, 1.55, 18, 2.4],
-                        "line-opacity": 0.9
-                    }
-                }, beforeId);
+                const controller = typeof AbortController === "function" ? new AbortController() : null;
+                const timeoutId = controller ? window.setTimeout(() => controller.abort(), 18000) : 0;
+                let response;
+                try {
+                    response = await window.fetch(url, {
+                        method: "GET",
+                        mode: "cors",
+                        credentials: "omit",
+                        signal: controller ? controller.signal : undefined
+                    });
+                } finally {
+                    if (timeoutId) window.clearTimeout(timeoutId);
+                }
+                if (!response.ok) throw new Error(`Overpass HTTP ${response.status}`);
+                const payload = await response.json();
+                const data = buildRailGeoJson(payload);
+                try {
+                    window.localStorage.setItem(RAIL_GEOMETRY_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+                } catch (_) {
+                    // localStorage容量制限・プライベートモード時も、今回の表示は継続する。
+                }
+                return data;
             } catch (error) {
-                console.warn("[Fushimi Map] 全鉄道路線のベースレイヤーを追加できませんでした:", error);
+                lastError = error;
+                console.warn(`[Fushimi Map] Railway geometry request failed at ${endpoint}:`, error);
             }
-        } else if (beforeId && typeof mapLibreMap.moveLayer === "function") {
-            try { mapLibreMap.moveLayer(neutralId, beforeId); } catch (_) {}
         }
-
-        // transportation_name の線形フィーチャーには route_N_name / name が格納される。
-        // ここを transportation の subclass="rail" だけで絞ると路線を区別できない。
-        RAIL_LINE_STYLES.forEach((route) => {
-            const casingId = `fushimi-${route.id}-casing`;
-            const lineId = `fushimi-${route.id}-line`;
-            const filter = makeRailRouteNameFilter(route.aliases);
-
-            if (!mapLibreMap.getLayer(casingId)) {
-                try {
-                    mapLibreMap.addLayer({
-                        id: casingId,
-                        type: "line",
-                        source: sourceId,
-                        "source-layer": "transportation_name",
-                        minzoom: 8,
-                        filter,
-                        layout: { "line-cap": "round", "line-join": "round" },
-                        paint: {
-                            "line-color": "#ffffff",
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 4.6, 18, 6.4],
-                            "line-opacity": 1
-                        }
-                    }, beforeId);
-                } catch (error) {
-                    console.warn(`[Fushimi Map] ${route.label} の縁取りを追加できませんでした:`, error);
-                }
-            } else if (beforeId && typeof mapLibreMap.moveLayer === "function") {
-                try { mapLibreMap.moveLayer(casingId, beforeId); } catch (_) {}
-            }
-
-            if (!mapLibreMap.getLayer(lineId)) {
-                try {
-                    mapLibreMap.addLayer({
-                        id: lineId,
-                        type: "line",
-                        source: sourceId,
-                        "source-layer": "transportation_name",
-                        minzoom: 8,
-                        filter,
-                        layout: { "line-cap": "round", "line-join": "round" },
-                        paint: {
-                            "line-color": route.color,
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.8, 13, 3.0, 18, 4.5],
-                            "line-opacity": 1
-                        }
-                    }, beforeId);
-                } catch (error) {
-                    console.warn(`[Fushimi Map] ${route.label} の色レイヤーを追加できませんでした:`, error);
-                }
-            } else if (beforeId && typeof mapLibreMap.moveLayer === "function") {
-                try { mapLibreMap.moveLayer(lineId, beforeId); } catch (_) {}
-            }
-        });
+        throw lastError || new Error("鉄道路線データを取得できませんでした。");
     }
 
-    function createRailLineLegend() {
+    function createRailLineLegend(state = "loading") {
         const host = document.querySelector(".planner-map-section");
-        if (!host || host.querySelector(".maplibre-rail-legend")) return;
-        const legend = document.createElement("div");
-        legend.className = "maplibre-rail-legend";
-        legend.setAttribute("role", "note");
-        legend.setAttribute("aria-label", "鉄道路線の色分け");
-        legend.innerHTML = RAIL_LINE_STYLES.map((route) => `
+        if (!host) return;
+        let legend = host.querySelector(".maplibre-rail-legend");
+        if (!legend) {
+            legend = document.createElement("div");
+            legend.className = "maplibre-rail-legend";
+            legend.setAttribute("role", "note");
+            legend.setAttribute("aria-label", "鉄道路線の色分け");
+            host.appendChild(legend);
+        }
+        const items = OSM_RAIL_RELATIONS.map((route) => `
             <div class="maplibre-rail-legend-item">
                 <span class="maplibre-rail-legend-swatch" style="--rail-line-color:${route.color}"></span>
                 <span>${route.label}</span>
             </div>
         `).join("");
-        host.appendChild(legend);
+        const message = state === "loading" ? "路線データを読み込み中" :
+            state === "error" ? "路線データを取得できませんでした" : "";
+        legend.innerHTML = `${items}${message ? `<div class="maplibre-rail-legend-status">${message}</div>` : ""}`;
+        legend.dataset.status = state;
+    }
+
+    function addOsmRailGeoJsonLayers(data) {
+        if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || !data) return;
+        try {
+            if (mapLibreMap.getSource("fushimi-osm-rail-routes")) {
+                mapLibreMap.getSource("fushimi-osm-rail-routes").setData(data);
+            } else {
+                mapLibreMap.addSource("fushimi-osm-rail-routes", { type: "geojson", data });
+            }
+
+            const firstSymbol = (mapLibreMap.getStyle()?.layers || []).find((layer) => layer.type === "symbol");
+            const beforeId = firstSymbol ? firstSymbol.id : undefined;
+            const width = ["interpolate", ["linear"], ["zoom"], 11, 2.2, 14, 3.6, 18, 5.2];
+            const casingWidth = ["interpolate", ["linear"], ["zoom"], 11, 3.8, 14, 5.6, 18, 7.4];
+
+            if (!mapLibreMap.getLayer("fushimi-osm-rail-casing")) {
+                mapLibreMap.addLayer({
+                    id: "fushimi-osm-rail-casing",
+                    type: "line",
+                    source: "fushimi-osm-rail-routes",
+                    minzoom: 11,
+                    layout: { "line-cap": "round", "line-join": "round" },
+                    paint: { "line-color": "#ffffff", "line-width": casingWidth, "line-opacity": 0.98 }
+                }, beforeId);
+            } else if (beforeId) {
+                mapLibreMap.moveLayer("fushimi-osm-rail-casing", beforeId);
+            }
+
+            OSM_RAIL_RELATIONS.forEach((route) => {
+                const layerId = `fushimi-osm-rail-${route.id}`;
+                if (!mapLibreMap.getLayer(layerId)) {
+                    mapLibreMap.addLayer({
+                        id: layerId,
+                        type: "line",
+                        source: "fushimi-osm-rail-routes",
+                        minzoom: 11,
+                        filter: ["==", ["get", "routeId"], route.id],
+                        layout: { "line-cap": "round", "line-join": "round" },
+                        paint: { "line-color": route.color, "line-width": width, "line-opacity": 1 }
+                    }, beforeId);
+                } else if (beforeId) {
+                    mapLibreMap.moveLayer(layerId, beforeId);
+                }
+            });
+            createRailLineLegend("ready");
+            console.info(`[Fushimi Map] OSM railway overlay added: ${data.features.length} local track segments.`);
+        } catch (error) {
+            console.error("[Fushimi Map] Railway GeoJSON overlay could not be installed:", error);
+            createRailLineLegend("error");
+        }
+    }
+
+    function ensureOsmRailOverlay() {
+        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
+        if (railGeoJson) {
+            addOsmRailGeoJsonLayers(railGeoJson);
+            return;
+        }
+        if (railGeoJsonPromise) return;
+
+        const cached = getCachedRailGeoJson();
+        if (cached) {
+            railGeoJson = cached;
+            addOsmRailGeoJsonLayers(railGeoJson);
+            return;
+        }
+
+        createRailLineLegend("loading");
+        railGeoJsonPromise = requestOverpassRailGeoJson()
+            .then((data) => {
+                railGeoJson = data;
+                if (mapLibreMap && mapLibreMap.isStyleLoaded()) addOsmRailGeoJsonLayers(data);
+                return data;
+            })
+            .catch((error) => {
+                console.error("[Fushimi Map] Railway line colors are unavailable:", error);
+                createRailLineLegend("error");
+                railGeoJsonPromise = null;
+                return null;
+            });
     }
 
     function applyMapReadabilityStyle() {
@@ -372,16 +442,15 @@
             // 元スタイルの道路レイヤーには触れず、道路色などを壊さない。
         });
 
-        // 路線名フィールドを持つ鉄道フィーチャーに、奈良線と京阪本線の色を重ねる。
-        addNamedRailHighlightLayers();
-        createRailLineLegend();
+        // OSMの路線リレーション形状を専用GeoJSONレイヤーとして重ねる。
+        ensureOsmRailOverlay();
     }
 
     function add3DBuildings() {
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || isAdding3DBuildings) return;
         applyMapReadabilityStyle();
         if (mapLibreMap.getLayer("fushimi-3d-buildings")) {
-            addNamedRailHighlightLayers();
+            ensureOsmRailOverlay();
             return;
         }
         const sourceId = getVectorSourceId();
@@ -416,9 +485,8 @@
                     "fill-extrusion-vertical-gradient": true
                 }
             }, firstLabel ? firstLabel.id : undefined);
-            // 3D buildings are inserted above existing line layers; move the two
-            // emphasized railway routes back above buildings for continuous visibility.
-            addNamedRailHighlightLayers();
+            // 3D建物の上にOSM路線GeoJSONを重ね、色付き路線を常に見えるようにする。
+            ensureOsmRailOverlay();
             console.info("[Fushimi Map Test] 3D building extrusion layer added.");
         } catch (error) {
             console.warn("[Fushimi Map Test] 3D buildings are unavailable in this style:", error);
