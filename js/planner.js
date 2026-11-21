@@ -4,8 +4,8 @@ document.addEventListener("DOMContentLoaded", function () {
     // BUILD MARKER — V11.2
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V162-SMOOTH-MARKERS-FOCUS-NAV";
-    console.log("[Fushimi Inari Smart Guide] planner.js V162-SMOOTH-MARKERS-FOCUS-NAV loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V163-CARTO-KEEP-KEY";
+    console.log("[Fushimi Inari Smart Guide] planner.js V163-CARTO-KEEP-KEY loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
@@ -440,41 +440,52 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let cartoTileErrorCount = 0;
     let cartoTileLoadCount = 0;
-    let usingKeylessCartoFallback = false;
-    let keylessCartoErrorCount = 0;
+    let cartoTileErrorNotice = null;
 
-    function useSameCartoWithoutKey() {
-        if (usingKeylessCartoFallback) return;
-        usingKeylessCartoFallback = true;
-        // Keep the same CARTO Positron basemap; never switch to another provider.
-        // CARTO may display its required API-key watermark when the key is rejected.
-        const sameCartoLayer = L.tileLayer(
-            "https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png",
-            {
-                minZoom: 0,
-                maxZoom: 18,
-                maxNativeZoom: 18,
-                keepBuffer: 3,
-                updateWhenIdle: false,
-                updateWhenZooming: true,
-                attribution: CARTO_ATTRIBUTION
-            }
-        );
-        sameCartoLayer.on("tileerror", function () {
-            keylessCartoErrorCount += 1;
-            if (keylessCartoErrorCount === 1 || keylessCartoErrorCount % 8 === 0) {
-                console.error("[Fushimi] CARTO Positron without a key also failed. Check network access; no other map provider will be used.");
-            }
+    // CARTO Basemaps requires the API key on every tile request. Do not retry
+    // without a key: that fallback now returns an "API key required" tile and
+    // can replace an otherwise recoverable layer with a permanently unusable one.
+    function showCartoTileErrorNotice() {
+        if (cartoTileErrorNotice || cartoTileLoadCount > 0) return;
+        const lang = (typeof getCurrentLanguage === "function" ? getCurrentLanguage() : "ja");
+        const messages = {
+            ja: "地図を読み込めません。CARTO APIキーの許可ドメインと通信環境を確認してください。",
+            en: "Map tiles could not be loaded. Check the CARTO API key's allowed domains and your connection.",
+            zh: "地图加载失败。请检查 CARTO API 密钥的允许域名和网络连接。",
+            ko: "지도를 불러오지 못했습니다. CARTO API 키의 허용 도메인과 네트워크 연결을 확인해 주세요."
+        };
+        cartoTileErrorNotice = document.createElement("div");
+        cartoTileErrorNotice.className = "planner-carto-error-notice";
+        cartoTileErrorNotice.textContent = messages[lang] || messages.ja;
+        Object.assign(cartoTileErrorNotice.style, {
+            position: "absolute",
+            zIndex: "1200",
+            top: "calc(env(safe-area-inset-top, 0px) + 84px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "min(92%, 520px)",
+            boxSizing: "border-box",
+            padding: "10px 14px",
+            borderRadius: "14px",
+            background: "rgba(255,255,255,.94)",
+            color: "#7c2d25",
+            border: "1px solid rgba(180,70,55,.22)",
+            boxShadow: "0 5px 18px rgba(0,0,0,.12)",
+            font: "600 12px/1.55 system-ui, sans-serif",
+            textAlign: "center",
+            pointerEvents: "none"
         });
-        sameCartoLayer.addTo(map);
-        map.removeLayer(cartoPositronLayer);
-        console.warn("[Fushimi] CARTO rejected the configured key. Retrying the same CARTO Positron style without a key; CARTO may show an API-key watermark.");
+        map.getContainer().appendChild(cartoTileErrorNotice);
     }
 
     cartoPositronLayer.on("tileload", function () {
         cartoTileLoadCount += 1;
         if (cartoTileLoadCount === 1) {
             console.info("[Fushimi] CARTO Positron tiles are loading.");
+            if (cartoTileErrorNotice) {
+                cartoTileErrorNotice.remove();
+                cartoTileErrorNotice = null;
+            }
         }
     });
     cartoPositronLayer.on("tileerror", function (event) {
@@ -484,13 +495,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 ", failedTiles=" + cartoTileErrorCount +
                 ", loadedTiles=" + cartoTileLoadCount +
                 ", keyConfigured=" + Boolean(CARTO_BASEMAP_API_KEY) +
-                ". Keep CARTO as the only basemap; check the API key and allowed Referer hosts.",
+                ". Check the CARTO API key, allowed Referer hosts, and network access.",
                 event && event.tile ? event.tile.src : "");
         }
-        // If CARTO returns a burst of errors, retry the same official CARTO style without a key.
-        // This preserves the requested map provider/design; it does not switch basemaps.
-        if (!usingKeylessCartoFallback && cartoTileErrorCount >= 4) {
-            useSameCartoWithoutKey();
+        if (cartoTileErrorCount >= 4 && cartoTileLoadCount === 0) {
+            showCartoTileErrorNotice();
         }
     });
     cartoPositronLayer.addTo(map);

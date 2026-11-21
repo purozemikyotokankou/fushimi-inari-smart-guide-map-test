@@ -1,15 +1,13 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D test build (v163) */
+/* Fushimi Inari Smart Guide — offline support (v148) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-maptest-v163';
+const CACHE_NAME = 'fushimi-smart-guide-v149';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 163;
+const WORKER_VERSION = 149;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.css'
+  'https://unpkg.com/leaflet/dist/leaflet.js',
+  'https://unpkg.com/leaflet/dist/leaflet.css'
 ];
 
 self.addEventListener('install', (event) => {
@@ -85,13 +83,11 @@ const PRELOAD_CORE = [
   './index.html', './home.html', './planner.html', './spots.html',
   './css/style.css', './css/planner.css',
   './js/language.js', './js/home-ui.js', './js/home-boot.js',
-  './js/planner.js', './js/map-engine-maplibre.js', './js/planner-weather.js', './js/planner-ambient-light.js',
+  './js/planner.js', './js/planner-weather.js', './js/planner-ambient-light.js',
   './js/spots.js', './js/carto-config.js', './js/liquid-cursor.js', './js/app-boot.js',
   './service-worker.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.css'
+  'https://unpkg.com/leaflet/dist/leaflet.js',
+  'https://unpkg.com/leaflet/dist/leaflet.css'
 ];
 const PRELOAD_DATA = ['./data/spots.json', './data/routes.json'];
 const PRELOAD_ICONS = [
@@ -249,7 +245,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache only the pinned Leaflet/MapLibre vendor assets; map tiles and live APIs remain online.
+  // Versioned same-origin JS/CSS assets must honor their ?v= query string.
+  // The previous generic cache lookup used ignoreSearch:true, which could return
+  // an older planner.js even after planner.html was updated with a new version.
+  if (sameOrigin && /\.(?:js|css)$/i.test(url.pathname) && url.searchParams.has('v')) {
+    event.respondWith((async () => {
+      const cache = await cachePromise;
+      const exactCached = await cache.match(request);
+      try {
+        const response = await fetch(request, { cache: 'no-cache' });
+        if (response && response.ok) {
+          try { await cache.put(request, response.clone()); } catch (_) {}
+        }
+        return response;
+      } catch (_) {
+        if (exactCached) return exactCached;
+        const unversioned = await cache.match(new URL(url.pathname, self.location.origin).href);
+        return unversioned || Response.error();
+      }
+    })());
+    return;
+  }
+
+  // Cache only Leaflet cross-origin assets; CARTO tiles and live APIs remain online.
   if (!sameOrigin) {
     if (!CDN_ASSETS.includes(url.href)) return;
     event.respondWith((async () => {
