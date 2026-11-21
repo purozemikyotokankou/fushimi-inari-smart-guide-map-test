@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment, v171)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (test environment, v172)
  * MapLibre owns the base-map camera (pan / zoom / pitch / bearing).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -205,6 +205,47 @@
         return anyVectorSource ? anyVectorSource[0] : null;
     }
 
+    // Positronの標準鉄道路線レイヤーを必ず表示する。
+    // 3D建物レイヤーが標準鉄道路線より上に重なって線が消えるケースに備え、
+    // MapLibreのlineレイヤーを表示状態に戻し、建物レイヤーより上へ移動する。
+    function isNativeRailLineLayer(layer) {
+        if (!layer || layer.type !== "line") return false;
+        if (String(layer["source-layer"] || "").toLowerCase() !== "transportation") return false;
+        const identity = `${layer.id || ""} ${JSON.stringify(layer.filter || [])}`.toLowerCase();
+        return /rail|railway|transit/.test(identity);
+    }
+
+    function restoreNativeRailLines(bringToFront = false) {
+        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return 0;
+        const layers = (mapLibreMap.getStyle()?.layers || []).filter(isNativeRailLineLayer);
+        layers.forEach((layer) => {
+            try {
+                mapLibreMap.setLayoutProperty(layer.id, "visibility", "visible");
+                mapLibreMap.setPaintProperty(layer.id, "line-color", "#BFC5CA");
+                mapLibreMap.setPaintProperty(layer.id, "line-opacity", 0.98);
+                mapLibreMap.setPaintProperty(layer.id, "line-width", [
+                    "interpolate", ["linear"], ["zoom"],
+                    11, 1.5,
+                    14, 2.2,
+                    16, 3.1,
+                    19, 4.8
+                ]);
+            } catch (error) {
+                console.warn(`[Fushimi Map] Native railway layer style failed: ${layer.id}`, error);
+            }
+        });
+        if (bringToFront) {
+            // style上の順序を保ったまま最後へ移動し、3D建物の押し隠しを防ぐ。
+            layers.forEach((layer) => {
+                try { mapLibreMap.moveLayer(layer.id); } catch (error) {
+                    console.warn(`[Fushimi Map] Native railway layer move failed: ${layer.id}`, error);
+                }
+            });
+        }
+        console.info(`[Fushimi Map] Native railway fallback active: ${layers.length} layer(s).`);
+        return layers.length;
+    }
+
     // JR奈良線・京阪本線は、ベースマップの表示名ラベルを検索して色を付けるのではなく、
     // OpenStreetMapの路線リレーション形状をGeoJSONとして取得し、専用線で重ねる。
     // これにより transportation_name の名前フィールドや地図スタイルのラベル設定に依存しない。
@@ -212,7 +253,7 @@
         { id: "jr-nara", relationId: 11370565, label: "JR奈良線", color: "#8B5A2B" },
         { id: "keihan-main", relationId: 1921059, label: "京阪本線", color: "#174A72" }
     ];
-    const RAIL_GEOMETRY_CACHE_KEY = "fushimi-smart-guide-rail-geometry-v171";
+    const RAIL_GEOMETRY_CACHE_KEY = "fushimi-smart-guide-rail-geometry-v172";
     const RAIL_GEOMETRY_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
     const RAIL_GEOMETRY_BBOX = { south: 34.947, west: 135.750, north: 34.988, east: 135.802 };
     const OVERPASS_ENDPOINTS = [
@@ -472,7 +513,11 @@
             })
             .catch((error) => {
                 console.error("[Fushimi Map] Railway line colors are unavailable:", error);
-                createRailLineLegend("error", error?.message || "路線データを取得できませんでした");
+                const nativeRailCount = restoreNativeRailLines(true);
+                const detail = nativeRailCount > 0
+                    ? `鉄道路線はグレーで表示中（${nativeRailCount}レイヤー）。色分けデータを取得できませんでした：${error?.message || "取得失敗"}`
+                    : `鉄道路線レイヤーも見つかりません。色分けデータ取得失敗：${error?.message || "取得失敗"}`;
+                createRailLineLegend(nativeRailCount > 0 ? "partial" : "error", detail);
                 railGeoJsonPromise = null;
                 return null;
             });
@@ -492,6 +537,8 @@
             // 元スタイルの道路レイヤーには触れず、道路色などを壊さない。
         });
 
+        // Overpass取得に失敗しても、ベースマップの鉄道路線そのものは消さない。
+        restoreNativeRailLines(false);
         // OSMの路線リレーション形状を専用GeoJSONレイヤーとして重ねる。
         ensureOsmRailOverlay();
     }
@@ -500,6 +547,7 @@
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || isAdding3DBuildings) return;
         applyMapReadabilityStyle();
         if (mapLibreMap.getLayer("fushimi-3d-buildings")) {
+            restoreNativeRailLines(true);
             ensureOsmRailOverlay();
             return;
         }
@@ -535,7 +583,9 @@
                     "fill-extrusion-vertical-gradient": true
                 }
             }, firstLabel ? firstLabel.id : undefined);
-            // 3D建物の上にOSM路線GeoJSONを重ね、色付き路線を常に見えるようにする。
+            // 3D建物の上に標準鉄道路線を戻す。Overpassが失敗しても線路は残す。
+            restoreNativeRailLines(true);
+            // 取得できたJR奈良線・京阪本線の形状はさらにその上へ重ねる。
             ensureOsmRailOverlay();
             console.info("[Fushimi Map Test] 3D building extrusion layer added.");
         } catch (error) {
