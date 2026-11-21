@@ -218,98 +218,77 @@
         const preferred = entries.find(([id, source]) => source && source.type === "vector" && id === "openmaptiles");
         if (preferred) return preferred[0];
         const openFreeMap = entries.find(([id, source]) => source && source.type === "vector" && /openfreemap|openmaptiles/i.test(`${id} ${source.url || ""}`));
-        return openFreeMap ? openFreeMap[0] : null;
+        if (openFreeMap) return openFreeMap[0];
+        // OpenFreeMap のスタイルでソースIDが変更されても、唯一のベクターソースを利用する。
+        const anyVectorSource = entries.find(([, source]) => source && source.type === "vector");
+        return anyVectorSource ? anyVectorSource[0] : null;
     }
 
     function makeRailRouteNameFilter(aliases) {
-        // OpenMapTiles transportation の鉄道フィーチャーから路線名で絞り込む。
-        // タイル提供元による属性差を考慮し、名称・路線番号・事業者名を確認する。
-        const nameFields = ["name", "name:en", "name:ja", "name_en", "name_ja", "ref", "network"];
-        for (let index = 1; index <= 6; index += 1) nameFields.push(`route_${index}_name`);
-        const matches = [];
+        // OpenMapTiles の transportation_name は railway の種別を class="rail" で持つ。
+        // subclass="rail" だけで絞ると対象が0件になるため、class/subclass両方を許容する。
+        // 路線名は name / route_N_name などの属性に入るため、完全一致ではなく部分一致で判定する。
+        const nameFields = [
+            "name", "name_en", "name_de", "name:en", "name:ja", "name:nonlatin",
+            "name_int", "ref", "route_1_name", "route_2_name", "route_3_name",
+            "route_4_name", "route_5_name", "route_6_name"
+        ];
+        const nameMatches = [];
         nameFields.forEach((field) => {
+            const value = ["downcase", ["to-string", ["coalesce", ["get", field], ""]]];
             aliases.forEach((alias) => {
-                matches.push(["==", ["downcase", ["to-string", ["coalesce", ["get", field], ""]]], alias.toLowerCase()]);
+                nameMatches.push(["!=", ["index-of", alias.toLowerCase(), value], -1]);
             });
         });
-        return ["all", ["==", ["get", "subclass"], "rail"], ["any", ...matches]];
+
+        return [
+            "all",
+            ["any", ["==", ["get", "class"], "rail"], ["==", ["get", "subclass"], "rail"]],
+            ["any", ...nameMatches]
+        ];
     }
 
     function addNamedRailHighlightLayers() {
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
         const sourceId = getVectorSourceId();
-        if (!sourceId) return;
+        if (!sourceId) {
+            console.warn("[Fushimi Map] 鉄道路線の色分け: ベクター地図ソースが見つかりません。");
+            return;
+        }
         const style = mapLibreMap.getStyle();
         const source = style && style.sources && style.sources[sourceId];
         if (!source || source.type !== "vector") return;
 
         const firstSymbol = (style.layers || []).find((layer) => layer.type === "symbol");
         const beforeId = firstSymbol ? firstSymbol.id : undefined;
-        const railFilter = ["==", ["get", "subclass"], "rail"];
 
-        // 元スタイルの線路色に依存せず、まず全鉄道を控えめな灰色で描画する。
-        // その上に対象2路線だけを専用色で重ねる。
-        if (!mapLibreMap.getLayer("fushimi-all-rail-neutral")) {
+        // 全路線は薄いグレーで統一。対象2路線だけを下の専用レイヤーで上書きする。
+        const neutralId = "fushimi-all-rail-neutral";
+        if (!mapLibreMap.getLayer(neutralId)) {
             try {
                 mapLibreMap.addLayer({
-                    id: "fushimi-all-rail-neutral", type: "line", source: sourceId,
-                    "source-layer": "transportation", minzoom: 8, filter: railFilter,
+                    id: neutralId,
+                    type: "line",
+                    source: sourceId,
+                    "source-layer": "transportation",
+                    minzoom: 8,
+                    filter: ["any", ["==", ["get", "subclass"], "rail"], ["==", ["get", "class"], "rail"]],
                     layout: { "line-cap": "round", "line-join": "round" },
                     paint: {
                         "line-color": NEUTRAL_RAIL_COLOR,
-                        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.8, 13, 1.35, 18, 2.1],
-                        "line-opacity": 0.82
+                        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.9, 13, 1.55, 18, 2.4],
+                        "line-opacity": 0.9
                     }
                 }, beforeId);
-            } catch (error) { console.warn("[Fushimi Map] 鉄道ベースレイヤーを追加できませんでした:", error); }
+            } catch (error) {
+                console.warn("[Fushimi Map] 全鉄道路線のベースレイヤーを追加できませんでした:", error);
+            }
+        } else if (beforeId && typeof mapLibreMap.moveLayer === "function") {
+            try { mapLibreMap.moveLayer(neutralId, beforeId); } catch (_) {}
         }
 
-        RAIL_LINE_STYLES.forEach((route) => {
-            const casingId = `fushimi-${route.id}-casing`;
-            const lineId = `fushimi-${route.id}-line`;
-            const filter = makeRailRouteNameFilter(route.aliases);
-            if (!mapLibreMap.getLayer(casingId)) {
-                try {
-                    mapLibreMap.addLayer({
-                        id: casingId, type: "line", source: sourceId,
-                        "source-layer": "transportation", minzoom: 8, filter,
-                        layout: { "line-cap": "round", "line-join": "round" },
-                        paint: {
-                            "line-color": "#ffffff",
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.0, 13, 3.4, 18, 5.2],
-                            "line-opacity": 0.98
-                        }
-                    }, beforeId);
-                } catch (error) { console.warn(`[Fushimi Map] ${route.label} の縁取りを追加できませんでした:`, error); }
-            }
-            if (!mapLibreMap.getLayer(lineId)) {
-                try {
-                    mapLibreMap.addLayer({
-                        id: lineId, type: "line", source: sourceId,
-                        "source-layer": "transportation", minzoom: 8, filter,
-                        layout: { "line-cap": "round", "line-join": "round" },
-                        paint: {
-                            "line-color": route.color,
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.25, 13, 2.45, 18, 3.8],
-                            "line-opacity": 1
-                        }
-                    }, beforeId);
-                } catch (error) { console.warn(`[Fushimi Map] ${route.label} の色レイヤーを追加できませんでした:`, error); }
-            }
-        });
-    }
-
-    function addNamedRailHighlightLayers() {
-        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
-        const sourceId = getVectorSourceId();
-        if (!sourceId) return;
-        const style = mapLibreMap.getStyle();
-        const source = style && style.sources && style.sources[sourceId];
-        if (!source || source.type !== "vector") return;
-
-        const firstSymbol = (style.layers || []).find((layer) => layer.type === "symbol");
-        const beforeId = firstSymbol ? firstSymbol.id : undefined;
-
+        // transportation_name の線形フィーチャーには route_N_name / name が格納される。
+        // ここを transportation の subclass="rail" だけで絞ると路線を区別できない。
         RAIL_LINE_STYLES.forEach((route) => {
             const casingId = `fushimi-${route.id}-casing`;
             const lineId = `fushimi-${route.id}-line`;
@@ -322,17 +301,17 @@
                         type: "line",
                         source: sourceId,
                         "source-layer": "transportation_name",
-                        minzoom: 10,
+                        minzoom: 8,
                         filter,
                         layout: { "line-cap": "round", "line-join": "round" },
                         paint: {
                             "line-color": "#ffffff",
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2.8, 14, 4.4, 18, 6.2],
-                            "line-opacity": 0.96
+                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 4.6, 18, 6.4],
+                            "line-opacity": 1
                         }
                     }, beforeId);
                 } catch (error) {
-                    console.warn(`[Fushimi Map] ${route.label} の縁取りレイヤーを追加できませんでした:`, error);
+                    console.warn(`[Fushimi Map] ${route.label} の縁取りを追加できませんでした:`, error);
                 }
             } else if (beforeId && typeof mapLibreMap.moveLayer === "function") {
                 try { mapLibreMap.moveLayer(casingId, beforeId); } catch (_) {}
@@ -345,14 +324,13 @@
                         type: "line",
                         source: sourceId,
                         "source-layer": "transportation_name",
-                        minzoom: 10,
+                        minzoom: 8,
                         filter,
                         layout: { "line-cap": "round", "line-join": "round" },
                         paint: {
                             "line-color": route.color,
-                            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1.7, 14, 2.8, 18, 4.1],
-                            "line-opacity": 1,
-                            "line-blur": 0.12
+                            "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.8, 13, 3.0, 18, 4.5],
+                            "line-opacity": 1
                         }
                     }, beforeId);
                 } catch (error) {
@@ -394,7 +372,7 @@
             // 元スタイルの道路レイヤーには触れず、道路色などを壊さない。
         });
 
-        // 路線名の属性が入ったベクターレイヤーの上に、奈良線と京阪本線だけを重ねる。
+        // 路線名フィールドを持つ鉄道フィーチャーに、奈良線と京阪本線の色を重ねる。
         addNamedRailHighlightLayers();
         createRailLineLegend();
     }

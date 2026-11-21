@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v168) */
+/* Fushimi Inari Smart Guide — offline support (v169) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v168';
+const CACHE_NAME = 'fushimi-smart-guide-v169';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 168;
+const WORKER_VERSION = 169;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
