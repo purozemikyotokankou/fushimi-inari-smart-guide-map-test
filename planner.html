@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#f5f5f7">
     <title>伏見稲荷スマートガイド</title>
-    <!-- V163: MapLibre GL + OpenFreeMap Positron 3D camera test basemap. -->
+    <!-- V117: restore the previously working CARTO tile setup; no tile bounds clipping. -->
 
     <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/planner.css?v=163-maplibre-3d">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.css">
+    <link rel="stylesheet" href="css/planner.css?v=162-smooth-markers-focus-nav">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
 <style id="fushimi-adaptive-light-styles">
 /* V82 — same adaptive edge-light look, anchored to the screen edge above Leaflet tiles. */
 #map {
@@ -141,13 +140,7 @@
                     <h1>観光マップ</h1>
                 </div>
 
-                <div id="maplibreBase"></div>
                 <div id="map" aria-label="伏見稲荷の地図"></div>
-                <div id="maplibreStatus" class="maplibre-status" role="status" aria-live="polite">
-                    <span class="maplibre-status-dot" aria-hidden="true"></span>
-                    <span id="maplibreStatusText">新しい地図を読み込んでいます…</span>
-                    <button type="button" id="maplibreRetry" hidden>再読み込み</button>
-                </div>
 
                 <div class="planner-top-actions" aria-label="Map actions">
                     <button type="button" id="openMapSearchBtn" class="map-action-tile map-search-action" aria-label="スポットを検索" aria-expanded="false" aria-controls="mapSearchPopover">
@@ -343,11 +336,10 @@
     </div>
 </main>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.7.1/maplibre-gl.min.js" defer></script>
-<script src="js/map-engine-maplibre.js?v=163-3d" defer></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js" defer></script>
 <script src="js/language.js?v=138" defer></script>
-<script src="js/planner.js?v=163-maplibre-3d" defer></script>
+<script src="js/carto-config.js?v=113-carto-official-endpoint" defer></script>
+<script src="js/planner.js?v=162-smooth-markers-focus-nav" defer></script>
 <script src="js/planner-weather.js?v=138" defer></script>
 <script src="js/planner-ambient-light.js?v=138" defer></script>
 <script>
