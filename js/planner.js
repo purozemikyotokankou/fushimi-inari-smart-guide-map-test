@@ -394,7 +394,7 @@ document.addEventListener("DOMContentLoaded", function () {
         doubleClickZoom: false,
         boxZoom: false,
         keyboard: false
-    }).setView([34.96788994013442, 135.77865108489644], 17);
+    }).setView([34.96794265, 135.77641661], 17);
 
     const mapEngine = window.FushimiMapEngine;
     if (mapEngine && typeof mapEngine.createMap === "function" && typeof mapEngine.bindLeaflet === "function") {
