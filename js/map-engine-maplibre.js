@@ -202,8 +202,35 @@
         return openFreeMap ? openFreeMap[0] : null;
     }
 
+    function applyMapReadabilityStyle() {
+        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
+        const layers = mapLibreMap.getStyle()?.layers || [];
+        layers.forEach((layer) => {
+            // 地図上の地名・施設名などの文字ラベルだけを非表示にする。
+            // POIアイコンや道路・建物の形状は残す。
+            if (layer.type === "symbol" && layer.layout && layer.layout["text-field"] !== undefined) {
+                try { mapLibreMap.setLayoutProperty(layer.id, "visibility", "none"); } catch (_) {}
+            }
+
+            // OpenFreeMap / OpenMapTiles の鉄道線レイヤーを視認しやすくする。
+            // style のレイヤーIDまたはフィルターに rail が明示された線だけを対象にする。
+            if (layer.type !== "line") return;
+            const filterText = JSON.stringify(layer.filter || "").toLowerCase();
+            const layerName = `${layer.id || ""} ${layer["source-layer"] || ""}`.toLowerCase();
+            const isRailLayer = /rail|railway|transit/.test(layerName) ||
+                (String(layer["source-layer"] || "").toLowerCase() === "transportation" && /rail|railway/.test(filterText));
+            if (!isRailLayer) return;
+            try {
+                mapLibreMap.setPaintProperty(layer.id, "line-color", "#386b8f");
+                mapLibreMap.setPaintProperty(layer.id, "line-width", ["interpolate", ["linear"], ["zoom"], 10, 1.4, 15, 2.5, 18, 3.6]);
+                mapLibreMap.setPaintProperty(layer.id, "line-opacity", 1);
+            } catch (_) {}
+        });
+    }
+
     function add3DBuildings() {
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || isAdding3DBuildings) return;
+        applyMapReadabilityStyle();
         if (mapLibreMap.getLayer("fushimi-3d-buildings")) return;
         const sourceId = getVectorSourceId();
         if (!sourceId) {

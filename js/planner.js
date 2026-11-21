@@ -6936,67 +6936,69 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function chooseRecommendedTourWaypoints(startGraphNodeId, destinationSpot) {
         const destinationId = String(destinationSpot?.id || "");
-        const orientedIds = [
-            RECOMMENDED_TOUR_SPOT_IDS.slice(),
-            RECOMMENDED_TOUR_SPOT_IDS.slice().reverse()
-        ];
-        const startOnSightseeingSpine = startGraphNodeId && RECOMMENDED_TOUR_SPOT_IDS.includes(String(startGraphNodeId));
-        const candidates = orientedIds.map(function (orderedIds) {
-            const startIndex = startGraphNodeId ? orderedIds.indexOf(String(startGraphNodeId)) : -1;
-            const destinationIndex = orderedIds.indexOf(destinationId);
-            // If the start is on the sightseeing spine, only keep the direction
-            // that actually begins at that point. Otherwise a reverse candidate
-            // could skip all landmarks and silently collapse to a shortest route.
-            if (startOnSightseeingSpine && startIndex < 0) return null;
-            // If both endpoints are on the sightseeing spine, a direction that
-            // would pass the destination and loop back is not an itinerary.
-            if (startIndex >= 0 && destinationIndex >= 0 && destinationIndex < startIndex) return null;
-            // When the start is at the end of this orientation and the destination
-            // is off the spine, this direction has no remaining sightseeing stops.
-            if (startIndex === orderedIds.length - 1 && destinationIndex < 0) return null;
-            const firstIndex = startIndex >= 0 ? startIndex + 1 : 0;
-            const lastIndex = destinationIndex >= 0 ? destinationIndex : orderedIds.length;
-            const sequence = orderedIds.slice(firstIndex, lastIndex);
-            // For an off-spine start and a destination beyond the entrance,
-            // discard the backwards orientation if it offers no sightseeing stop.
-            // The entrance itself is allowed as a direct destination.
-            if (startIndex < 0 && destinationIndex > 0 && sequence.length === 0) return null;
-            return sequence.map(findSpotById).filter(Boolean);
-        }).filter(Array.isArray);
-        if (!startOnSightseeingSpine && destinationId !== RECOMMENDED_TOUR_SPOT_IDS[0] &&
-            candidates.some(sequence => sequence.length > 0)) {
-            // A reverse orientation ending immediately at a late landmark must
-            // not win merely because it is shorter; that would turn sightseeing
-            // mode into an ordinary shortest route and skip the selected tour.
-            for (let index = candidates.length - 1; index >= 0; index--) {
-                if (!candidates[index].length) candidates.splice(index, 1);
-            }
+        const startId = startGraphNodeId ? String(startGraphNodeId) : "";
+
+        // 出発地が参道ネットワーク上で特定できない場合、入口などを勝手に
+        // 経由させると大きな遠回りになるため、観光経由地は追加しない。
+        if (!startId || !destinationId || startId === destinationId) return [];
+
+        const directRoute = findGraphRoute(startId, destinationId);
+        if (!directRoute || !Number.isFinite(Number(directRoute.distanceKm))) return [];
+        const directKm = Number(directRoute.distanceKm);
+
+        // 観光スポットは「必ず全部回る」ものではなく、出発地から到着地へ
+        // 進む方向にあり、短い寄り道で立ち寄れる場合だけ採用する。
+        const spine = RECOMMENDED_TOUR_SPOT_IDS;
+        const startIndex = spine.indexOf(startId);
+        const destinationIndex = spine.indexOf(destinationId);
+        let orientationCandidates;
+        if (startIndex >= 0) {
+            // 参道の観光軸上から出発する場合は、出発地点より先だけを見る。
+            // 到着地が観光軸上なら、その地点を越えて折り返さない。
+            orientationCandidates = [spine.slice(startIndex + 1,
+                destinationIndex >= 0 ? destinationIndex : spine.length)];
+        } else {
+            // 観光軸外から出発する場合は両方向を比較する。
+            // 入口まで戻るような候補は、距離上限で自動的に落とす。
+            orientationCandidates = [spine.slice(), spine.slice().reverse()];
         }
 
-        function scoreSequence(sequence) {
-            let cursor = startGraphNodeId ? String(startGraphNodeId) : String(sequence[0]?.id || "");
-            let totalKm = 0;
-            const targets = startGraphNodeId ? sequence.concat(destinationSpot) : sequence.slice(1).concat(destinationSpot);
-            for (const target of targets) {
-                if (!target || String(target.id) === cursor) continue;
-                const route = findGraphRoute(cursor, target.id);
-                if (!route || !Array.isArray(route.paths) || !route.paths.some(path => Array.isArray(path) && path.length >= 2)) {
-                    return Infinity;
+        const maxDetourKm = Math.max(0.18, directKm * 0.20);
+        let best = { sequence: [], count: 0, distanceKm: directKm };
+
+        // 最大8候補なので全ての順序付き部分列を評価できる。
+        // 観光立ち寄り数を優先し、同数なら歩行距離が短いものを選ぶ。
+        orientationCandidates.forEach((orientation) => {
+            const candidates = orientation
+                .filter(id => id !== startId && id !== destinationId)
+                .map(findSpotById)
+                .filter(Boolean)
+                .slice(0, 8);
+            const totalMasks = 1 << candidates.length;
+            for (let mask = 1; mask < totalMasks; mask++) {
+                const sequence = [];
+                for (let index = 0; index < candidates.length; index++) {
+                    if (mask & (1 << index)) sequence.push(candidates[index]);
                 }
-                totalKm += Number(route.distanceKm || 0);
-                cursor = String(target.id);
+                let cursor = startId;
+                let totalKm = 0;
+                let connected = true;
+                for (const target of sequence.concat(destinationSpot)) {
+                    const route = findGraphRoute(cursor, target.id);
+                    if (!route || !Number.isFinite(Number(route.distanceKm))) {
+                        connected = false;
+                        break;
+                    }
+                    totalKm += Number(route.distanceKm);
+                    cursor = String(target.id);
+                }
+                if (!connected || totalKm - directKm > maxDetourKm) continue;
+                if (sequence.length > best.count ||
+                    (sequence.length === best.count && totalKm < best.distanceKm)) {
+                    best = { sequence, count: sequence.length, distanceKm: totalKm };
+                }
             }
-            return totalKm;
-        }
-
-        let best = null;
-        candidates.forEach(sequence => {
-            const score = scoreSequence(sequence);
-            if (Number.isFinite(score) && (!best || score < best.score)) best = { sequence, score };
         });
-        if (!best) {
-            throw new Error("観光おすすめルートの経由地が、登録済みの参道データでつながっていません。参道データを確認してください。");
-        }
         return best.sequence;
     }
 
