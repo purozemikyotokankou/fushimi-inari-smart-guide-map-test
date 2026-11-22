@@ -6832,7 +6832,7 @@ body.planner-page .liquid-cursor {
 
 
 /* ============================================================
-   V165 — MapLibre 3D basemap + transparent Leaflet overlay
+   V182 — MapLibre 3D basemap + terrain-aware Leaflet overlays
    Leaflet is retained only for existing SVG pins, paths and popups.
 ============================================================ */
 #map {
@@ -6859,19 +6859,19 @@ body.planner-page .liquid-cursor {
     height: 100% !important;
 }
 #maplibreBase .maplibregl-canvas { display: block; outline: none; }
-#map .leaflet-container,
-#map.leaflet-container { background: transparent !important; }
-#map .leaflet-tile-pane,
-#map .leaflet-control-zoom,
-#map .leaflet-control-attribution { display: none !important; }
+#map.maplibre-active .leaflet-container,
+#map.maplibre-active.leaflet-container { background: transparent !important; }
+#map.maplibre-active .leaflet-tile-pane,
+#map.maplibre-active .leaflet-control-zoom,
+#map.maplibre-active .leaflet-control-attribution { display: none !important; }
 /* Pass background gestures through to MapLibre; pins remain interactive. */
-#map .leaflet-map-pane { z-index: 400 !important; pointer-events: none !important; }
-#map .leaflet-marker-icon { pointer-events: auto !important; }
-#map .leaflet-marker-shadow,
-#map .leaflet-interactive { pointer-events: none !important; }
-#map .leaflet-popup-pane,
-#map .leaflet-popup { pointer-events: auto !important; }
-#map .leaflet-marker-icon {
+#map.maplibre-active .leaflet-map-pane { z-index: 400 !important; pointer-events: none !important; }
+#map.maplibre-active .leaflet-marker-icon { pointer-events: auto !important; }
+#map.maplibre-active .leaflet-marker-shadow,
+#map.maplibre-active .leaflet-interactive { pointer-events: none !important; }
+#map.maplibre-active .leaflet-popup-pane,
+#map.maplibre-active .leaflet-popup { pointer-events: auto !important; }
+#map.maplibre-active .leaflet-marker-icon {
     will-change: transform;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;

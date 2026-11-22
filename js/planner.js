@@ -1,11 +1,11 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ============================================================
-    // BUILD MARKER — V11.2
+    // BUILD MARKER — V182
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V165-MAPLIBRE-3D";
-    console.log("[Fushimi Inari Smart Guide] planner.js V165-MAPLIBRE-3D loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V182-MAPLIBRE-TERRAIN-ROUTE";
+    console.log("[Fushimi Inari Smart Guide] planner.js V182-MAPLIBRE-TERRAIN-ROUTE loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // V11 additions
     // ① 現在地を出発地点として利用
     // ② Liquid Glass UIをJSから追加
-    // ③ MapLibre + OpenFreeMap Positron 3Dマップを使用
+    // ③ CARTO Positronの淡色地図を使用
     // ④ ルート線をユニバーサルデザインパレットのオレンジ #FF9900
     // ⑤ routes.json をグラフとして扱う
     // ⑥ routes.json の複数区間を自動接続
@@ -371,55 +371,60 @@ document.addEventListener("DOMContentLoaded", function () {
     const plannerWeatherDetail = document.getElementById("plannerWeatherDetail");
 
     // ============================================================
-    // 3Dベースマップ + Leafletオーバーレイ
+    // Leaflet地図
     // ============================================================
 
-    // MapLibre owns the basemap and all camera gestures. Leaflet is a transparent
-    // overlay for existing custom SVG pins, route lines and popup interactions.
-    const map = L.map("map", {
-        zoomControl: false,
-        attributionControl: false,
-        preferCanvas: true,
-        fadeAnimation: false,
-        zoomAnimation: false,
-        markerZoomAnimation: false,
-        minZoom: 0,
-        maxZoom: 18,
-        bounceAtZoomLimits: false,
-        zoomSnap: 0,
-        zoomDelta: 0.5,
-        dragging: false,
-        touchZoom: false,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        boxZoom: false,
-        keyboard: false
-    }).setView([34.96794265, 135.77641661], 17);
+    const map =
+        L.map("map", {
+            zoomControl: false,
+            preferCanvas: true,
+            fadeAnimation: false,
+            zoomAnimation: true,
+            markerZoomAnimation: true,
+            // CARTO tiles were failing at higher zoom levels in this project.
+            // Stop at z18 so zooming cannot request the failing z19/z20 tiles.
+            minZoom: 0,
+            maxZoom: 18,
+            bounceAtZoomLimits: false,
+            zoomSnap: 1,
+            zoomDelta: 1
+        }).setView(
+            [34.96788994013442, 135.77865108489644],
+            17
+        );
 
-    const mapEngine = window.FushimiMapEngine;
-    if (mapEngine && typeof mapEngine.createMap === "function" && typeof mapEngine.bindLeaflet === "function") {
-        const mapLibreInstance = mapEngine.createMap();
-        if (mapLibreInstance) mapEngine.bindLeaflet(map);
-        else console.error("[Fushimi] MapLibre failed to initialize; see the map status message.");
-    } else {
-        console.error("[Fushimi] MapLibre bridge or MapLibre GL JS did not load.");
-        const status = document.getElementById("maplibreStatus");
-        const text = document.getElementById("maplibreStatusText");
-        if (status && text) {
-            text.textContent = "3Dマップのプログラムを読み込めませんでした。ページを再読み込みしてください。";
-            status.hidden = false;
+    // Start the MapLibre 3D base and connect Leaflet's custom spot-marker panes.
+    // If WebGL / network initialization fails, the existing CARTO Leaflet map remains available.
+    let mapLibreBridgeActive = false;
+    try {
+        const mapEngine = window.FushimiMapEngine;
+        if (mapEngine && typeof mapEngine.createMap === "function" && typeof mapEngine.bindLeaflet === "function") {
+            const mapLibreBaseMap = mapEngine.createMap();
+            if (mapLibreBaseMap) mapLibreBridgeActive = mapEngine.bindLeaflet(map);
         }
+    } catch (error) {
+        console.warn("[Fushimi Map] MapLibre bridge could not be started; using the Leaflet fallback.", error);
+        mapLibreBridgeActive = false;
     }
-    map.getContainer().style.background = "transparent";
-    if (map.getPanes()?.tilePane) map.getPanes().tilePane.style.display = "none";
-
+    const mapLibreBaseElement = document.getElementById("maplibreBase");
+    const mapLibreStatusElement = document.getElementById("maplibreStatus");
+    if (mapLibreBridgeActive) {
+        map.getContainer().classList.add("maplibre-active");
+    } else {
+        // Do not leave an empty MapLibre host/status card over the working fallback map.
+        if (mapLibreBaseElement) mapLibreBaseElement.style.display = "none";
+        if (mapLibreStatusElement) mapLibreStatusElement.hidden = true;
+    }
 
     // Weather presentation and Open-Meteo refresh are isolated in planner-weather.js.
 
     function refreshPlannerMapSize() {
         requestAnimationFrame(function () {
-            if (map && typeof map.invalidateSize === "function") map.invalidateSize({ pan: false });
-            window.FushimiMapEngine?.resize?.();
+            if (map && typeof map.invalidateSize === "function") {
+                map.invalidateSize({
+                    pan: false
+                });
+            }
         });
     }
 
@@ -429,8 +434,99 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     setTimeout(refreshPlannerMapSize, 120);
 
-    // Old CARTO raster tiles are intentionally not used in the 3D map.
-    // MapLibre/OpenFreeMap renders the basemap; Leaflet only holds spot and route overlays.
+    // ============================================================
+    // V113: CARTO Positron only. Use CARTO's documented keyed raster endpoint; do not switch providers.
+    // CARTO requires its documented host/path pattern for keyed tile requests.
+    // Keep the selected Positron style and do not switch map providers.
+    // ============================================================
+    const CARTO_BASEMAP_API_KEY = String(window.FUSHIMI_CARTO_BASEMAP_API_KEY || "").trim();
+    // Use CARTO's documented API-key endpoint. The keyed Basemaps URL is on
+    // basemaps.cartocdn.com without the legacy {s} subdomain prefix.
+    const CARTO_POSITRON_TILE_URL =
+        "https://basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png" +
+        (CARTO_BASEMAP_API_KEY ? "?key=" + encodeURIComponent(CARTO_BASEMAP_API_KEY) : "");
+    const CARTO_ATTRIBUTION =
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>, ' +
+        '&copy; <a href="https://carto.com/attribution/" target="_blank" rel="noopener noreferrer">CARTO</a> · ' +
+        '<a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Weather data by Open-Meteo.com</a>';
+
+    const cartoPositronLayer = L.tileLayer(CARTO_POSITRON_TILE_URL, {
+        minZoom: 0,
+        maxZoom: 18,
+        maxNativeZoom: 18,
+        keepBuffer: 3,
+        updateWhenIdle: false,
+        updateWhenZooming: true,
+        attribution: CARTO_ATTRIBUTION
+    });
+
+    let cartoTileErrorCount = 0;
+    let cartoTileLoadCount = 0;
+    let cartoTileErrorNotice = null;
+
+    // CARTO Basemaps requires the API key on every tile request. Do not retry
+    // without a key: that fallback now returns an "API key required" tile and
+    // can replace an otherwise recoverable layer with a permanently unusable one.
+    function showCartoTileErrorNotice() {
+        if (cartoTileErrorNotice || cartoTileLoadCount > 0) return;
+        const lang = (typeof getCurrentLanguage === "function" ? getCurrentLanguage() : "ja");
+        const messages = {
+            ja: "地図を読み込めません。CARTO APIキーの許可ドメインと通信環境を確認してください。",
+            en: "Map tiles could not be loaded. Check the CARTO API key's allowed domains and your connection.",
+            zh: "地图加载失败。请检查 CARTO API 密钥的允许域名和网络连接。",
+            ko: "지도를 불러오지 못했습니다. CARTO API 키의 허용 도메인과 네트워크 연결을 확인해 주세요."
+        };
+        cartoTileErrorNotice = document.createElement("div");
+        cartoTileErrorNotice.className = "planner-carto-error-notice";
+        cartoTileErrorNotice.textContent = messages[lang] || messages.ja;
+        Object.assign(cartoTileErrorNotice.style, {
+            position: "absolute",
+            zIndex: "1200",
+            top: "calc(env(safe-area-inset-top, 0px) + 84px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "min(92%, 520px)",
+            boxSizing: "border-box",
+            padding: "10px 14px",
+            borderRadius: "14px",
+            background: "rgba(255,255,255,.94)",
+            color: "#7c2d25",
+            border: "1px solid rgba(180,70,55,.22)",
+            boxShadow: "0 5px 18px rgba(0,0,0,.12)",
+            font: "600 12px/1.55 system-ui, sans-serif",
+            textAlign: "center",
+            pointerEvents: "none"
+        });
+        map.getContainer().appendChild(cartoTileErrorNotice);
+    }
+
+    cartoPositronLayer.on("tileload", function () {
+        cartoTileLoadCount += 1;
+        if (cartoTileLoadCount === 1) {
+            console.info("[Fushimi] CARTO Positron tiles are loading.");
+            if (cartoTileErrorNotice) {
+                cartoTileErrorNotice.remove();
+                cartoTileErrorNotice = null;
+            }
+        }
+    });
+    cartoPositronLayer.on("tileerror", function (event) {
+        cartoTileErrorCount += 1;
+        if (cartoTileErrorCount === 1 || cartoTileErrorCount % 8 === 0) {
+            console.error("[Fushimi] CARTO Positron tile failed; zoom=" + map.getZoom() +
+                ", failedTiles=" + cartoTileErrorCount +
+                ", loadedTiles=" + cartoTileLoadCount +
+                ", keyConfigured=" + Boolean(CARTO_BASEMAP_API_KEY) +
+                ". Check the CARTO API key, allowed Referer hosts, and network access.",
+                event && event.tile ? event.tile.src : "");
+        }
+        if (cartoTileErrorCount >= 4 && cartoTileLoadCount === 0) {
+            showCartoTileErrorNotice();
+        }
+    });
+    // MapLibre provides the Positron base when it starts successfully.
+    // Keep CARTO tiles only as a fallback to avoid loading two complete basemaps.
+    if (!mapLibreBridgeActive) cartoPositronLayer.addTo(map);
 
     // ============================================================
     // ルート用Pane
@@ -4208,27 +4304,21 @@ document.addEventListener("DOMContentLoaded", function () {
     function focusCoordinateOnMap(latLng, options = {}) {
         const zoom = Number.isFinite(options.zoom)
             ? options.zoom
-            : Math.min(18, Math.max(16, Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 16)));
-        const visiblePoint = getVisibleMapFocusPoint();
-        if (window.FushimiMapEngine?.easeToCoordinate) {
-            window.FushimiMapEngine.easeToCoordinate(latLng, visiblePoint, zoom, options.animate === false ? 0 : (options.duration || 780));
+            : Math.min(18, Math.max(16, Number(map.getZoom?.() || 16)));
+        const center = getMapCenterForCoordinate(latLng, zoom);
+        if (options.animate === false) {
+            map.setView(center, zoom, { animate: false });
             return;
         }
-        const center = getMapCenterForCoordinate(latLng, zoom);
-        if (options.animate === false) map.setView(center, zoom, { animate: false });
-        else map.flyTo(center, zoom, { animate: true, duration: options.duration || 0.85, easeLinearity: 0.22 });
-    }
-
-    let pendingSpotFocusTimer = 0;
-    let pendingSpotFocusFrame = 0;
-    let spotFocusSequence = 0;
-
-    function cancelPendingSpotFocus() {
-        spotFocusSequence += 1;
-        if (pendingSpotFocusTimer) window.clearTimeout(pendingSpotFocusTimer);
-        if (pendingSpotFocusFrame) window.cancelAnimationFrame(pendingSpotFocusFrame);
-        pendingSpotFocusTimer = 0;
-        pendingSpotFocusFrame = 0;
+        if (options.panOnly) {
+            map.panTo(center, { animate: true, duration: options.duration || 0.42, easeLinearity: 0.25 });
+            return;
+        }
+        map.flyTo(center, zoom, {
+            animate: true,
+            duration: options.duration || 0.85,
+            easeLinearity: 0.22
+        });
     }
 
     function focusSpotOnMap(spot) {
@@ -4236,18 +4326,13 @@ document.addEventListener("DOMContentLoaded", function () {
         const lng = Number(spot?.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-        // A rapid second selection replaces the first pending camera move.
-        cancelPendingSpotFocus();
-        const sequence = spotFocusSequence;
-        // Wait for the spot detail sheet transition before measuring the clear map area.
-        pendingSpotFocusTimer = window.setTimeout(function () {
-            pendingSpotFocusTimer = 0;
-            pendingSpotFocusFrame = window.requestAnimationFrame(function () {
-                pendingSpotFocusFrame = 0;
-                if (sequence !== spotFocusSequence || !map || !map.getContainer().isConnected) return;
-                focusCoordinateOnMap([lat, lng], { duration: 780 });
-            });
-        }, 380);
+        // Wait until the detail sheet and collapsed bottom tray have completed
+        // their layout for this frame. This prevents the marker being centered
+        // using the previous (smaller) unobstructed area.
+        window.requestAnimationFrame(function () {
+            if (!map || !map.getContainer().isConnected) return;
+            focusCoordinateOnMap([lat, lng], { duration: 0.85 });
+        });
     }
 
     function routeSetupText(key) {
@@ -4939,7 +5024,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function hideSpotDetail() {
         if (!mapSpotDetail) return;
-        cancelPendingSpotFocus();
         mapSpotDetail.hidden = true;
         mapSpotDetail.classList.remove("is-expanded", "is-compact", "is-route-mode");
         plannerWorkspace?.classList.remove("has-spot-detail", "has-route-planner");
@@ -5446,7 +5530,6 @@ document.addEventListener("DOMContentLoaded", function () {
     map.on("click", closeSpotQuickPalette);
     map.on("movestart zoomstart resize", closeSpotQuickPalette);
     map.on("dragstart", disableNavigationFollowByGesture);
-    window.addEventListener("fushimi:map-user-moved", disableNavigationFollowByGesture);
 
     navFollowButton?.addEventListener("click", function (event) {
         event.preventDefault();
@@ -6936,69 +7019,67 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function chooseRecommendedTourWaypoints(startGraphNodeId, destinationSpot) {
         const destinationId = String(destinationSpot?.id || "");
-        const startId = startGraphNodeId ? String(startGraphNodeId) : "";
-
-        // 出発地が参道ネットワーク上で特定できない場合、入口などを勝手に
-        // 経由させると大きな遠回りになるため、観光経由地は追加しない。
-        if (!startId || !destinationId || startId === destinationId) return [];
-
-        const directRoute = findGraphRoute(startId, destinationId);
-        if (!directRoute || !Number.isFinite(Number(directRoute.distanceKm))) return [];
-        const directKm = Number(directRoute.distanceKm);
-
-        // 観光スポットは「必ず全部回る」ものではなく、出発地から到着地へ
-        // 進む方向にあり、短い寄り道で立ち寄れる場合だけ採用する。
-        const spine = RECOMMENDED_TOUR_SPOT_IDS;
-        const startIndex = spine.indexOf(startId);
-        const destinationIndex = spine.indexOf(destinationId);
-        let orientationCandidates;
-        if (startIndex >= 0) {
-            // 参道の観光軸上から出発する場合は、出発地点より先だけを見る。
-            // 到着地が観光軸上なら、その地点を越えて折り返さない。
-            orientationCandidates = [spine.slice(startIndex + 1,
-                destinationIndex >= 0 ? destinationIndex : spine.length)];
-        } else {
-            // 観光軸外から出発する場合は両方向を比較する。
-            // 入口まで戻るような候補は、距離上限で自動的に落とす。
-            orientationCandidates = [spine.slice(), spine.slice().reverse()];
+        const orientedIds = [
+            RECOMMENDED_TOUR_SPOT_IDS.slice(),
+            RECOMMENDED_TOUR_SPOT_IDS.slice().reverse()
+        ];
+        const startOnSightseeingSpine = startGraphNodeId && RECOMMENDED_TOUR_SPOT_IDS.includes(String(startGraphNodeId));
+        const candidates = orientedIds.map(function (orderedIds) {
+            const startIndex = startGraphNodeId ? orderedIds.indexOf(String(startGraphNodeId)) : -1;
+            const destinationIndex = orderedIds.indexOf(destinationId);
+            // If the start is on the sightseeing spine, only keep the direction
+            // that actually begins at that point. Otherwise a reverse candidate
+            // could skip all landmarks and silently collapse to a shortest route.
+            if (startOnSightseeingSpine && startIndex < 0) return null;
+            // If both endpoints are on the sightseeing spine, a direction that
+            // would pass the destination and loop back is not an itinerary.
+            if (startIndex >= 0 && destinationIndex >= 0 && destinationIndex < startIndex) return null;
+            // When the start is at the end of this orientation and the destination
+            // is off the spine, this direction has no remaining sightseeing stops.
+            if (startIndex === orderedIds.length - 1 && destinationIndex < 0) return null;
+            const firstIndex = startIndex >= 0 ? startIndex + 1 : 0;
+            const lastIndex = destinationIndex >= 0 ? destinationIndex : orderedIds.length;
+            const sequence = orderedIds.slice(firstIndex, lastIndex);
+            // For an off-spine start and a destination beyond the entrance,
+            // discard the backwards orientation if it offers no sightseeing stop.
+            // The entrance itself is allowed as a direct destination.
+            if (startIndex < 0 && destinationIndex > 0 && sequence.length === 0) return null;
+            return sequence.map(findSpotById).filter(Boolean);
+        }).filter(Array.isArray);
+        if (!startOnSightseeingSpine && destinationId !== RECOMMENDED_TOUR_SPOT_IDS[0] &&
+            candidates.some(sequence => sequence.length > 0)) {
+            // A reverse orientation ending immediately at a late landmark must
+            // not win merely because it is shorter; that would turn sightseeing
+            // mode into an ordinary shortest route and skip the selected tour.
+            for (let index = candidates.length - 1; index >= 0; index--) {
+                if (!candidates[index].length) candidates.splice(index, 1);
+            }
         }
 
-        const maxDetourKm = Math.max(0.18, directKm * 0.20);
-        let best = { sequence: [], count: 0, distanceKm: directKm };
-
-        // 最大8候補なので全ての順序付き部分列を評価できる。
-        // 観光立ち寄り数を優先し、同数なら歩行距離が短いものを選ぶ。
-        orientationCandidates.forEach((orientation) => {
-            const candidates = orientation
-                .filter(id => id !== startId && id !== destinationId)
-                .map(findSpotById)
-                .filter(Boolean)
-                .slice(0, 8);
-            const totalMasks = 1 << candidates.length;
-            for (let mask = 1; mask < totalMasks; mask++) {
-                const sequence = [];
-                for (let index = 0; index < candidates.length; index++) {
-                    if (mask & (1 << index)) sequence.push(candidates[index]);
+        function scoreSequence(sequence) {
+            let cursor = startGraphNodeId ? String(startGraphNodeId) : String(sequence[0]?.id || "");
+            let totalKm = 0;
+            const targets = startGraphNodeId ? sequence.concat(destinationSpot) : sequence.slice(1).concat(destinationSpot);
+            for (const target of targets) {
+                if (!target || String(target.id) === cursor) continue;
+                const route = findGraphRoute(cursor, target.id);
+                if (!route || !Array.isArray(route.paths) || !route.paths.some(path => Array.isArray(path) && path.length >= 2)) {
+                    return Infinity;
                 }
-                let cursor = startId;
-                let totalKm = 0;
-                let connected = true;
-                for (const target of sequence.concat(destinationSpot)) {
-                    const route = findGraphRoute(cursor, target.id);
-                    if (!route || !Number.isFinite(Number(route.distanceKm))) {
-                        connected = false;
-                        break;
-                    }
-                    totalKm += Number(route.distanceKm);
-                    cursor = String(target.id);
-                }
-                if (!connected || totalKm - directKm > maxDetourKm) continue;
-                if (sequence.length > best.count ||
-                    (sequence.length === best.count && totalKm < best.distanceKm)) {
-                    best = { sequence, count: sequence.length, distanceKm: totalKm };
-                }
+                totalKm += Number(route.distanceKm || 0);
+                cursor = String(target.id);
             }
+            return totalKm;
+        }
+
+        let best = null;
+        candidates.forEach(sequence => {
+            const score = scoreSequence(sequence);
+            if (Number.isFinite(score) && (!best || score < best.score)) best = { sequence, score };
         });
+        if (!best) {
+            throw new Error("観光おすすめルートの経由地が、登録済みの参道データでつながっていません。参道データを確認してください。");
+        }
         return best.sequence;
     }
 
@@ -7695,6 +7776,11 @@ document.addEventListener("DOMContentLoaded", function () {
             map.removeLayer(routeLine);
             routeLine = null;
         }
+        if (window.FushimiMapEngine && typeof window.FushimiMapEngine.clearRouteCoordinates === "function") {
+            window.FushimiMapEngine.clearRouteCoordinates();
+        }
+        const routePaneBeforeCreate = map.getPane("plannerRoutePane");
+        if (routePaneBeforeCreate) routePaneBeforeCreate.style.visibility = "visible";
         clearRouteNumberMarkers();
         routeSegments = [];
         navigationLegs = [];
@@ -7874,6 +7960,17 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         routeLine = L.featureGroup(routeLayers).addTo(map);
 
+        // Render the actual route on MapLibre's terrain surface. Leaflet keeps
+        // an invisible copy for the established bounds / route-navigation logic.
+        // This prevents the 2D SVG route from floating above or cutting through hills.
+        const nativeTerrainRouteVisible = !!(
+            window.FushimiMapEngine &&
+            typeof window.FushimiMapEngine.setRouteCoordinates === "function" &&
+            window.FushimiMapEngine.setRouteCoordinates(completeJourneyPath)
+        );
+        const routePane = map.getPane("plannerRoutePane");
+        if (routePane) routePane.style.visibility = nativeTerrainRouteVisible ? "hidden" : "visible";
+
         // One normalized path length = one beam that moves from the first
         // coordinate to the final coordinate, not one beam per route fragment.
         const toneWaveLayer = routeLayers.find(function (layer) {
@@ -7888,15 +7985,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // All visual layers now share exactly one route geometry.
         const routePathsForDisplay = [completeJourneyPath];
-        const journeyBounds = routeLine.getBounds();
-        if (window.FushimiMapEngine?.fitBounds) {
-            window.FushimiMapEngine.fitBounds([
-                [journeyBounds.getWest(), journeyBounds.getSouth()],
-                [journeyBounds.getEast(), journeyBounds.getNorth()]
-            ], { padding: { top: 110, right: 56, bottom: 200, left: 56 }, maxZoom: 17, duration: 700 });
-        } else {
-            map.fitBounds(journeyBounds, { padding: [40, 40] });
-        }
+        map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
         renderRouteNumberMarkers(routeTargets);
 
         const routeDistance = calculateRoutePathsDistance(routePathsForDisplay);
@@ -7933,10 +8022,6 @@ document.addEventListener("DOMContentLoaded", function () {
             navArrival.textContent = "";
         }
         updateNavigationPanel();
-        if (navigationLegs[0]?.geometry) {
-            const firstManeuver = getUpcomingManeuver(navigationLegs[0].geometry, { alongMeters: 0 });
-            setNavigationManeuver(firstManeuver.type, firstManeuver.distanceMeters);
-        }
         if (routeOptions?.destinationSpot) hideSpotDetail();
         setFoodCategorySwitcherOpen(false);
         setPlannerSheetState("collapsed");
@@ -7991,8 +8076,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive = true;
         navigationFollow = true;
-        lastNavigationFollowPosition = null;
-        window.FushimiMapEngine?.setNavigationMode?.(true);
         if (navFollowButton) {
             navFollowButton.textContent = getNavigationFollowLabel();
             navFollowButton.hidden = true;
@@ -8044,9 +8127,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                 Number(
                                     position.coords.accuracy ||
                                     0
-                                ),
-                            heading: Number.isFinite(position.coords.heading) ? position.coords.heading : null,
-                            speed: Number.isFinite(position.coords.speed) ? position.coords.speed : null
+                                )
                         };
 
                     setCurrentLocation(value, false);
@@ -8093,6 +8174,12 @@ document.addEventListener("DOMContentLoaded", function () {
             routeLine = null;
         }
 
+        if (window.FushimiMapEngine && typeof window.FushimiMapEngine.clearRouteCoordinates === "function") {
+            window.FushimiMapEngine.clearRouteCoordinates();
+        }
+        const routePane = map.getPane("plannerRoutePane");
+        if (routePane) routePane.style.visibility = "visible";
+
         clearRouteNumberMarkers();
         routeSegments = [];
     }
@@ -8101,8 +8188,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive = false;
         navigationFollow = true;
-        window.FushimiMapEngine?.setNavigationMode?.(false);
-        lastNavigationFollowPosition = null;
         setNavigationManeuver(null);
         if (navFollowButton) navFollowButton.hidden = true;
 
@@ -8313,26 +8398,11 @@ document.addEventListener("DOMContentLoaded", function () {
         navManeuver.dataset.direction = type;
     }
 
-    let lastNavigationFollowPosition = null;
     function panNavigationToLocation(location) {
         if (!navigationActive || !navigationFollow || !location) return;
-        if (lastNavigationFollowPosition) {
-            const moved = map.distance([lastNavigationFollowPosition.lat, lastNavigationFollowPosition.lng], [location.lat, location.lng]);
-            if (moved < 2.5) return;
-        }
-        lastNavigationFollowPosition = { lat: location.lat, lng: location.lng };
-        if (window.FushimiMapEngine?.followLocation) {
-            window.FushimiMapEngine.followLocation({
-                lat: location.lat, lng: location.lng,
-                heading: location.heading, speed: location.speed, accuracy: location.accuracy,
-                targetPoint: getVisibleMapFocusPoint(),
-                zoom: Math.max(17, Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 17)), duration: 650
-            });
-        } else {
-            const currentZoom = Number(window.FushimiMapEngine?.getZoom?.() || map.getZoom?.() || 17);
-            const targetCenter = getMapCenterForCoordinate([location.lat, location.lng], currentZoom);
-            map.panTo(targetCenter, { animate: true, duration: 0.38, easeLinearity: 0.25 });
-        }
+        const targetCenter = getMapCenterForCoordinate([location.lat, location.lng], map.getZoom());
+        if (map.distance(map.getCenter(), targetCenter) < 12) return;
+        map.panTo(targetCenter, { animate: true, duration: 0.38, easeLinearity: 0.25 });
     }
 
     function getNavigationFollowLabel() {
@@ -8356,9 +8426,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function enableNavigationFollow() {
         navigationFollow = true;
-        lastNavigationFollowPosition = null;
         if (navFollowButton) navFollowButton.hidden = true;
-        if (currentLocation) panNavigationToLocation(currentLocation);
+        if (currentLocation) {
+            const targetCenter = getMapCenterForCoordinate([currentLocation.lat, currentLocation.lng], map.getZoom());
+            map.panTo(targetCenter, { animate: true, duration: 0.42, easeLinearity: 0.25 });
+        }
     }
 
     function updateNavigationPanel() {
@@ -8542,14 +8614,6 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             updateNavigationPanel();
-            const nextLeg = navigationLegs[navigationLegIndex];
-            if (nextLeg?.geometry) {
-                const nextProgress = getNavigationProgress(nextLeg.geometry, location);
-                const nextManeuver = getUpcomingManeuver(nextLeg.geometry, nextProgress);
-                setNavigationManeuver(nextManeuver.type, nextManeuver.distanceMeters);
-            } else {
-                setNavigationManeuver("straight");
-            }
         }
     }
 
@@ -8589,7 +8653,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         navigationActive =
             false;
-        window.FushimiMapEngine?.setNavigationMode?.(false);
 
         if (
             navigationWatchId !==
@@ -8792,12 +8855,20 @@ document.addEventListener("DOMContentLoaded", function () {
             );
         }
 
-        if (centerMap) {
-            if (window.FushimiMapEngine?.easeToCoordinate) {
-                window.FushimiMapEngine.easeToCoordinate([value.lat, value.lng], getVisibleMapFocusPoint(), 18, 720);
-            } else {
-                map.setView([value.lat, value.lng], 18, { animate: true });
-            }
+        if (centerMap
+        ) {
+
+            map.setView(
+                [
+                    value.lat,
+                    value.lng
+                ],
+                18,
+                {
+                    animate:
+                        true
+                }
+            );
         }
 
         updateNavPanelForRoute();
@@ -8814,11 +8885,17 @@ document.addEventListener("DOMContentLoaded", function () {
                     const location =
                         await ensureCurrentLocation();
 
-                    if (window.FushimiMapEngine?.easeToCoordinate) {
-                        window.FushimiMapEngine.easeToCoordinate([location.lat, location.lng], getVisibleMapFocusPoint(), 18, 720);
-                    } else {
-                        map.setView([location.lat, location.lng], 18, { animate: true });
-                    }
+                    map.setView(
+                        [
+                            location.lat,
+                            location.lng
+                        ],
+                        18,
+                        {
+                            animate:
+                                true
+                        }
+                    );
 
                     if (
                         currentLocationMarker

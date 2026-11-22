@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v181 midpoint initial center) */
+/* Fushimi Inari Smart Guide — offline support (v182 terrain-aware pins and native terrain route) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v181';
+const CACHE_NAME = 'fushimi-smart-guide-v182';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 181;
+const WORKER_VERSION = 182;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',

@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v179 fixed 3D only)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v182 terrain-aware pins + native route)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -33,6 +33,18 @@
     let loadTimeoutId = 0;
     const markerTransformCache = new WeakMap();
     const markerLayers = new Set();
+    const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
+    let markerProjectionMatrix = null;
+
+    // Route geometry is rendered by MapLibre itself so it follows the DEM surface.
+    // Leaflet keeps a hidden copy only for its existing bounds / navigation logic.
+    const ROUTE_SOURCE_ID = "fushimi-native-route-source";
+    const ROUTE_BASE_LAYER_ID = "fushimi-native-route-base";
+    const ROUTE_BEAM_LAYER_ID = "fushimi-native-route-beam";
+    let activeRouteGeoJSON = null;
+    let routeBeamFrame = 0;
+    let routeBeamStart = 0;
+    let routeBeamLastPaint = 0;
 
     const status = () => document.getElementById("maplibreStatus");
     const statusText = () => document.getElementById("maplibreStatusText");
@@ -108,6 +120,57 @@
         return `matrix3d(${values.map((value) => Number(value.toFixed(10))).join(",")})`;
     }
 
+    function addMarkerProjectionReferenceLayer() {
+        if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || mapLibreMap.getLayer(MARKER_PROJECTION_LAYER_ID)) return;
+        try {
+            mapLibreMap.addLayer({
+                id: MARKER_PROJECTION_LAYER_ID,
+                type: "custom",
+                renderingMode: "3d",
+                onAdd: function () {},
+                render: function (_gl, matrixOrArgs) {
+                    // MapLibre 5.x supplies the Mercator-to-clip matrix directly;
+                    // newer builds wrap it in defaultProjectionData.mainMatrix.
+                    const matrix = matrixOrArgs && matrixOrArgs.length === 16
+                        ? matrixOrArgs
+                        : (matrixOrArgs?.defaultProjectionData?.mainMatrix || matrixOrArgs?.modelViewProjectionMatrix);
+                    if (matrix && matrix.length === 16) markerProjectionMatrix = new Float64Array(matrix);
+                },
+                onRemove: function () { markerProjectionMatrix = null; }
+            });
+        } catch (error) {
+            console.warn("[Fushimi Map] Terrain-aware marker projection layer unavailable:", error);
+            markerProjectionMatrix = null;
+        }
+    }
+
+    function projectCoordinate(lng, lat) {
+        if (!mapLibreMap) return null;
+        const mercator = window.maplibregl?.MercatorCoordinate;
+        if (terrainEnabled && markerProjectionMatrix && mercator && typeof mercator.fromLngLat === "function") {
+            try {
+                const elevation = mapLibreMap.queryTerrainElevation([lng, lat]);
+                const altitude = Number.isFinite(elevation) ? elevation : 0;
+                const coordinate = mercator.fromLngLat([lng, lat], altitude);
+                const m = markerProjectionMatrix;
+                const clipX = m[0] * coordinate.x + m[4] * coordinate.y + m[8] * coordinate.z + m[12];
+                const clipY = m[1] * coordinate.x + m[5] * coordinate.y + m[9] * coordinate.z + m[13];
+                const clipW = m[3] * coordinate.x + m[7] * coordinate.y + m[11] * coordinate.z + m[15];
+                if (Number.isFinite(clipW) && Math.abs(clipW) > 1e-8) {
+                    const width = mapLibreMap.getContainer().clientWidth;
+                    const height = mapLibreMap.getContainer().clientHeight;
+                    const x = (clipX / clipW + 1) * 0.5 * width;
+                    const y = (1 - clipY / clipW) * 0.5 * height;
+                    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+                }
+            } catch (_) {
+                // DEM tiles may not be ready yet. Fall through to sea-level projection.
+            }
+        }
+        const point = mapLibreMap.project([lng, lat]);
+        return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
+    }
+
     function updateLeafletOverlayProjection() {
         if (!loaded || !mapLibreMap || !leafletMap || !window.L) return;
         const size = leafletMap.getSize();
@@ -126,7 +189,8 @@
             corners.forEach((containerPoint) => {
                 const latLng = leafletMap.containerPointToLatLng(containerPoint);
                 const layerPoint = leafletMap.latLngToLayerPoint(latLng);
-                const projected = mapLibreMap.project([latLng.lng, latLng.lat]);
+                const projected = projectCoordinate(latLng.lng, latLng.lat);
+                if (!projected) throw new Error("MapLibre projection returned an invalid point.");
                 sourcePoints.push({ x: layerPoint.x, y: layerPoint.y });
                 targetPoints.push({ x: projected.x, y: projected.y });
             });
@@ -169,8 +233,8 @@
         markerLayers.forEach((layer) => {
             if (!layer || !layer._icon) return;
             const latLng = layer.getLatLng();
-            const point = mapLibreMap.project([latLng.lng, latLng.lat]);
-            if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+            const point = projectCoordinate(latLng.lng, latLng.lat);
+            if (!point) return;
             const applyPosition = (element) => {
                 if (!element) return;
                 const x = Number(point.x.toFixed(2));
@@ -421,9 +485,186 @@
         window.requestAnimationFrame(() => window.requestAnimationFrame(attempt));
     }
 
+    function routeGradientAt(progress) {
+        const center = Math.max(0.055, Math.min(0.945, progress));
+        const start = Math.max(0.001, center - 0.042);
+        const end = Math.min(0.999, center + 0.042);
+        return [
+            "interpolate", ["linear"], ["line-progress"],
+            0, "rgba(255,255,255,0)",
+            start, "rgba(255,255,255,0)",
+            center, "rgba(255,255,255,0.98)",
+            end, "rgba(255,255,255,0)",
+            1, "rgba(255,255,255,0)"
+        ];
+    }
+
+    function stopRouteBeamAnimation() {
+        if (routeBeamFrame) window.cancelAnimationFrame(routeBeamFrame);
+        routeBeamFrame = 0;
+        routeBeamStart = 0;
+        routeBeamLastPaint = 0;
+    }
+
+    function paintRouteBeam(timestamp) {
+        routeBeamFrame = 0;
+        if (!activeRouteGeoJSON || !mapLibreMap || !mapLibreMap.getLayer(ROUTE_BEAM_LAYER_ID)) return;
+        if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+        // 28fps is visually smooth while avoiding a continuous 60fps style update.
+        if (timestamp - routeBeamLastPaint < 35) {
+            routeBeamFrame = window.requestAnimationFrame(paintRouteBeam);
+            return;
+        }
+        routeBeamLastPaint = timestamp;
+        if (!routeBeamStart) routeBeamStart = timestamp;
+        const phase = ((timestamp - routeBeamStart) % 3000) / 3000;
+        const center = 0.055 + phase * 0.89;
+        try {
+            mapLibreMap.setPaintProperty(ROUTE_BEAM_LAYER_ID, "line-gradient", routeGradientAt(center));
+        } catch (error) {
+            console.warn("[Fushimi Map] Route beam animation paused:", error);
+            return;
+        }
+        routeBeamFrame = window.requestAnimationFrame(paintRouteBeam);
+    }
+
+    function ensureNativeRouteLayers() {
+        if (!mapLibreMap || !loaded || !mapLibreMap.isStyleLoaded()) return false;
+        try {
+            if (!mapLibreMap.getSource(ROUTE_SOURCE_ID)) {
+                mapLibreMap.addSource(ROUTE_SOURCE_ID, {
+                    type: "geojson",
+                    lineMetrics: true,
+                    data: activeRouteGeoJSON || { type: "FeatureCollection", features: [] }
+                });
+            }
+            if (!mapLibreMap.getLayer(ROUTE_BASE_LAYER_ID)) {
+                mapLibreMap.addLayer({
+                    id: ROUTE_BASE_LAYER_ID,
+                    type: "line",
+                    source: ROUTE_SOURCE_ID,
+                    layout: {
+                        "line-cap": "round",
+                        "line-join": "round",
+                        "visibility": "visible"
+                    },
+                    paint: {
+                        "line-color": "#FF9900",
+                        "line-width": ["interpolate", ["linear"], ["zoom"], 13, 4.2, 17, 6.4, 19, 7.2],
+                        "line-opacity": 1,
+                        "line-blur": 0.18
+                    }
+                });
+            }
+            if (!mapLibreMap.getLayer(ROUTE_BEAM_LAYER_ID)) {
+                mapLibreMap.addLayer({
+                    id: ROUTE_BEAM_LAYER_ID,
+                    type: "line",
+                    source: ROUTE_SOURCE_ID,
+                    layout: {
+                        "line-cap": "round",
+                        "line-join": "round",
+                        "visibility": "visible"
+                    },
+                    paint: {
+                        "line-gradient": routeGradientAt(0.18),
+                        "line-width": ["interpolate", ["linear"], ["zoom"], 13, 2.3, 17, 3.6, 19, 4.0],
+                        "line-opacity": 0.98,
+                        "line-blur": 0.15
+                    }
+                });
+            }
+            return true;
+        } catch (error) {
+            console.warn("[Fushimi Map] Native terrain route layers could not be created:", error);
+            return false;
+        }
+    }
+
+    function normalizeRouteCoordinates(latLngs) {
+        if (!Array.isArray(latLngs)) return [];
+        const coordinates = [];
+        latLngs.forEach((point) => {
+            const lat = Number(Array.isArray(point) ? point[0] : point?.lat);
+            const lng = Number(Array.isArray(point) ? point[1] : (point?.lng ?? point?.lon));
+            if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+            const next = [lng, lat];
+            const previous = coordinates[coordinates.length - 1];
+            if (!previous || Math.abs(previous[0] - lng) > 1e-9 || Math.abs(previous[1] - lat) > 1e-9) coordinates.push(next);
+        });
+        return coordinates.length >= 2 ? coordinates : [];
+    }
+
+    function setRouteCoordinates(latLngs) {
+        const coordinates = normalizeRouteCoordinates(latLngs);
+        if (coordinates.length < 2) return false;
+        activeRouteGeoJSON = {
+            type: "FeatureCollection",
+            features: [{
+                type: "Feature",
+                properties: { kind: "walking-route" },
+                geometry: { type: "LineString", coordinates }
+            }]
+        };
+        // A route can be requested before remote map tiles/style have finished
+        // loading. Keep its geometry queued; handleMapStyleReady() will create
+        // the native terrain layers and restore it as soon as the style is ready.
+        if (!mapLibreMap) return false;
+        if (!loaded || !mapLibreMap.isStyleLoaded()) return true;
+        if (!ensureNativeRouteLayers()) return false;
+        try {
+            mapLibreMap.getSource(ROUTE_SOURCE_ID).setData(activeRouteGeoJSON);
+            stopRouteBeamAnimation();
+            if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+                routeBeamFrame = window.requestAnimationFrame(paintRouteBeam);
+            } else {
+                mapLibreMap.setPaintProperty(ROUTE_BEAM_LAYER_ID, "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, "rgba(255,255,255,.75)", 1, "rgba(255,255,255,.75)"]);
+            }
+            return true;
+        } catch (error) {
+            console.warn("[Fushimi Map] Native route could not be displayed:", error);
+            return false;
+        }
+    }
+
+    function clearRouteCoordinates() {
+        stopRouteBeamAnimation();
+        activeRouteGeoJSON = null;
+        if (!mapLibreMap || !loaded || !mapLibreMap.isStyleLoaded()) return;
+        try {
+            const source = mapLibreMap.getSource(ROUTE_SOURCE_ID);
+            if (source) source.setData({ type: "FeatureCollection", features: [] });
+        } catch (error) {
+            console.warn("[Fushimi Map] Native route cleanup warning:", error);
+        }
+    }
+
+    function restoreNativeRouteAfterStyleLoad() {
+        if (!activeRouteGeoJSON) return;
+        if (!ensureNativeRouteLayers()) return;
+        try {
+            mapLibreMap.getSource(ROUTE_SOURCE_ID).setData(activeRouteGeoJSON);
+            if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+                stopRouteBeamAnimation();
+                routeBeamFrame = window.requestAnimationFrame(paintRouteBeam);
+            }
+        } catch (error) {
+            console.warn("[Fushimi Map] Route restore after style reload failed:", error);
+        }
+    }
+
     function createMap() {
         const container = document.getElementById("maplibreBase");
         if (!container) return null;
+        // MapLibre's canvas is absolutely positioned, so its host needs an explicit
+        // full-map size; without this the canvas can initialize at zero height.
+        container.style.position = "absolute";
+        container.style.inset = "0";
+        container.style.width = "100%";
+        container.style.height = "100%";
+        container.style.zIndex = "0";
+        container.style.overflow = "hidden";
 
         const retry = retryButton();
         if (retry && retry.dataset.fushimiBound !== "true") {
@@ -492,7 +733,9 @@
                 hideStatus();
                 container.classList.add("is-maplibre-loaded");
                 add3DBuildings();
+                addMarkerProjectionReferenceLayer();
                 enableFixedTerrain();
+                restoreNativeRouteAfterStyleLoad();
                 if (mapLibreMap) mapLibreMap.resize();
                 scheduleOverlayProjection();
             }
@@ -532,6 +775,7 @@
             mapLibreMap.on("pitchstart", notifyUserMapGesture);
             mapLibreMap.on("zoomstart", notifyUserMapGesture);
             mapLibreMap.on("move", scheduleOverlayProjection);
+            mapLibreMap.on("render", scheduleOverlayProjection);
             mapLibreMap.on("resize", scheduleOverlayProjection);
             mapLibreMap.on("terrain", scheduleOverlayProjection);
             mapLibreMap.on("idle", scheduleOverlayProjection);
@@ -607,7 +851,9 @@
             // The MapLibre move event schedules the matching overlay projection.
         }
 
-        mapLibreMap.on("moveend", syncLeafletFromMapLibre);
+        // Sync on every camera frame, not only moveend. Otherwise the 3D base map
+        // moves during a drag while Leaflet's vector overlays retain the old center.
+        mapLibreMap.on("move", syncLeafletFromMapLibre);
         leafletMap.on("move", syncMapLibreFromLeaflet);
         leafletMap.on("moveend zoomend viewreset resize layeradd layerremove", scheduleOverlayProjection);
 
@@ -627,8 +873,8 @@
 
     function projectLatLng(latLng) {
         if (!mapLibreMap || !latLng) return null;
-        const point = mapLibreMap.project([Number(latLng.lng), Number(latLng.lat)]);
-        return Number.isFinite(point.x) && Number.isFinite(point.y) ? { x: point.x, y: point.y } : null;
+        const point = projectCoordinate(Number(latLng.lng), Number(latLng.lat));
+        return point ? { x: point.x, y: point.y } : null;
     }
 
     function getCameraOffsetForPoint(targetPoint) {
@@ -711,6 +957,8 @@
         getZoom: function () { return mapLibreMap ? mapLibreMap.getZoom() + LEAFLET_ZOOM_OFFSET : null; },
         getStyleUrl: function () { return STYLE_URL; },
         projectLatLng,
+        setRouteCoordinates,
+        clearRouteCoordinates,
         easeToCoordinate,
         fitBounds,
         followLocation,
