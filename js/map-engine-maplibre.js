@@ -269,9 +269,7 @@
     }
 
     function addTerrainSourcesIfNeeded() {
-        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) {
-            throw new Error("地図スタイルがまだ準備できていません。");
-        }
+        if (!mapLibreMap) throw new Error("地図がまだ準備できていません。");
         if (!document.querySelector('link[data-fushimi-terrain-preconnect]')) {
             const preconnect = document.createElement("link");
             preconnect.rel = "preconnect";
@@ -356,22 +354,71 @@
         fixed3DBadge = badge;
     }
 
-    function enableFixedTerrain() {
-        if (!mapLibreMap || !loaded || terrainEnabled) return;
-        try {
-            addTerrainSourcesIfNeeded();
-            mapLibreMap.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.35 });
-            terrainEnabled = true;
-            createFixed3DBadge();
-            console.info("[Fushimi Map] Fixed 3D terrain enabled. DEM range restriction is disabled for reliable loading.");
-        } catch (error) {
-            terrainEnabled = false;
-            console.warn("[Fushimi Map] Fixed 3D terrain could not be enabled:", error);
-            createFixed3DBadge();
-            if (fixed3DBadge) fixed3DBadge.textContent = "3D地形 読込失敗";
-        } finally {
-            scheduleOverlayProjection();
+    let terrainEnableScheduled = false;
+    let terrainEnableAttempts = 0;
+    let terrainEnableTimer = 0;
+
+    function markTerrainFailure(error) {
+        terrainEnabled = false;
+        terrainEnableScheduled = false;
+        if (terrainEnableTimer) window.clearTimeout(terrainEnableTimer);
+        terrainEnableTimer = 0;
+        console.warn("[Fushimi Map] Fixed 3D terrain could not be enabled:", error);
+        createFixed3DBadge();
+        if (fixed3DBadge) {
+            fixed3DBadge.textContent = "3D地形 読込失敗";
+            fixed3DBadge.title = error && error.message ? error.message : String(error || "unknown error");
         }
+    }
+
+    function enableFixedTerrain() {
+        if (!mapLibreMap || !loaded || terrainEnabled || terrainEnableScheduled) return;
+        terrainEnableScheduled = true;
+        terrainEnableAttempts = 0;
+
+        // style.loadイベント直後はMapLibre内部のStyle更新が完了していない場合がある。
+        // V176で動作していたDEMソース構成を使い、Styleが完全に準備できるまで短く待ってから登録する。
+        const attempt = () => {
+            terrainEnableTimer = 0;
+            if (!mapLibreMap || !loaded || terrainEnabled) {
+                terrainEnableScheduled = false;
+                return;
+            }
+
+            if (typeof mapLibreMap.isStyleLoaded === "function" && !mapLibreMap.isStyleLoaded()) {
+                terrainEnableAttempts += 1;
+                if (terrainEnableAttempts <= 30) {
+                    terrainEnableTimer = window.setTimeout(attempt, 150);
+                    return;
+                }
+                markTerrainFailure(new Error("地図スタイルの準備が完了しませんでした。"));
+                return;
+            }
+
+            try {
+                addTerrainSourcesIfNeeded();
+                mapLibreMap.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.35 });
+                terrainEnabled = true;
+                terrainEnableScheduled = false;
+                createFixed3DBadge();
+                if (fixed3DBadge) {
+                    fixed3DBadge.textContent = "3D地形 固定表示";
+                    fixed3DBadge.title = "AWS Terrain Tiles の標高データを使用しています";
+                }
+                console.info("[Fushimi Map] Fixed 3D terrain enabled (same DEM source layout as V176).");
+                scheduleOverlayProjection();
+            } catch (error) {
+                // Style切替の瞬間に当たったエラーだけは、次のフレームで再試行する。
+                if (mapLibreMap && typeof mapLibreMap.isStyleLoaded === "function" && !mapLibreMap.isStyleLoaded() && terrainEnableAttempts < 30) {
+                    terrainEnableAttempts += 1;
+                    terrainEnableTimer = window.setTimeout(attempt, 150);
+                    return;
+                }
+                markTerrainFailure(error);
+            }
+        };
+
+        window.requestAnimationFrame(() => window.requestAnimationFrame(attempt));
     }
 
     function createMap() {
@@ -388,6 +435,11 @@
                 }
                 loaded = false;
                 terrainEnabled = false;
+                terrainEnableScheduled = false;
+                terrainEnableAttempts = 0;
+                if (terrainEnableTimer) window.clearTimeout(terrainEnableTimer);
+                terrainEnableTimer = 0;
+                if (fixed3DBadge) fixed3DBadge.textContent = "3D地形 読込中…";
                 showStatus("3Dマップを再読み込みしています…", false);
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 mapLibreMap.setStyle(STYLE_URL);
