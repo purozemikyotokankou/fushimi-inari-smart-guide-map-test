@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v178 fixed 3D, local 750m DEM)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v179 fixed 3D only)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -17,20 +17,8 @@
     const TERRAIN_SOURCE_ID = "fushimi-terrain-dem";
     const HILLSHADE_LAYER_ID = "fushimi-terrain-hillshade";
     const TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-    // トイレ③を中心に半径750mをカバーするDEM取得範囲。
-    // MapLibreのラスタDEMはタイル単位・矩形boundsで取得するため、円を囲む矩形になる。
-    // 通常のOpenFreeMapベース地図は移動先に応じて従来どおり読み込む。
-    const TERRAIN_RADIUS_METERS = 750;
-    const TERRAIN_CENTER_LNG = DEFAULT_CENTER[0];
-    const TERRAIN_CENTER_LAT = DEFAULT_CENTER[1];
-    const TERRAIN_LAT_DELTA = TERRAIN_RADIUS_METERS / 111320;
-    const TERRAIN_LNG_DELTA = TERRAIN_RADIUS_METERS / (111320 * Math.cos(TERRAIN_CENTER_LAT * Math.PI / 180));
-    const TERRAIN_BOUNDS = [
-        TERRAIN_CENTER_LNG - TERRAIN_LNG_DELTA,
-        TERRAIN_CENTER_LAT - TERRAIN_LAT_DELTA,
-        TERRAIN_CENTER_LNG + TERRAIN_LNG_DELTA,
-        TERRAIN_CENTER_LAT + TERRAIN_LAT_DELTA
-    ];
+    // 標高データの取得範囲は制限しない。前版で読み込み不具合が出た範囲制限を撤回。
+    const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
     const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
 
     let mapLibreMap = null;
@@ -293,15 +281,26 @@
             document.head.appendChild(preconnect);
         }
 
-        // TerrainとHillshadeは同じDEMソースを共有し、標高タイルの二重取得を避ける。
+        // V176で動作していた標高ソース構成に戻す。読み込み範囲・ズーム範囲を限定しない。
+        // Terrain用とHillshade用を分け、MapLibreの描画品質を維持する。
         if (!mapLibreMap.getSource(TERRAIN_SOURCE_ID)) {
             mapLibreMap.addSource(TERRAIN_SOURCE_ID, {
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
                 tileSize: 256,
-                bounds: TERRAIN_BOUNDS,
-                minzoom: 12,
-                maxzoom: 14,
+                minzoom: 0,
+                maxzoom: 15,
+                encoding: "terrarium",
+                attribution: TERRAIN_ATTRIBUTION
+            });
+        }
+        if (!mapLibreMap.getSource(HILLSHADE_SOURCE_ID)) {
+            mapLibreMap.addSource(HILLSHADE_SOURCE_ID, {
+                type: "raster-dem",
+                tiles: [TERRAIN_TILE_URL],
+                tileSize: 256,
+                minzoom: 0,
+                maxzoom: 15,
                 encoding: "terrarium",
                 attribution: TERRAIN_ATTRIBUTION
             });
@@ -313,7 +312,7 @@
             mapLibreMap.addLayer({
                 id: HILLSHADE_LAYER_ID,
                 type: "hillshade",
-                source: TERRAIN_SOURCE_ID,
+                source: HILLSHADE_SOURCE_ID,
                 paint: {
                     "hillshade-exaggeration": 0.34,
                     "hillshade-shadow-color": "#68716d",
@@ -364,7 +363,7 @@
             mapLibreMap.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.35 });
             terrainEnabled = true;
             createFixed3DBadge();
-            console.info("[Fushimi Map] Fixed 3D terrain enabled. DEM requests are limited to the 750m area around Toilet 3.");
+            console.info("[Fushimi Map] Fixed 3D terrain enabled. DEM range restriction is disabled for reliable loading.");
         } catch (error) {
             terrainEnabled = false;
             console.warn("[Fushimi Map] Fixed 3D terrain could not be enabled:", error);
@@ -428,8 +427,7 @@
                 // High-DPI端末でのGPU描画負荷を抑え、初回表示を軽くする。
                 pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
                 // 使わないズーム階層のタイルを抱え込みすぎない。
-                maxTileCacheZoomLevels: 3,
-                maxTileCacheSize: 96,
+                maxTileCacheZoomLevels: 4,
                 // ラベル衝突フェードを省略（このアプリでは地名テキストを非表示）。
                 fadeDuration: 0,
                 cancelPendingTileRequestsWhileZooming: true
