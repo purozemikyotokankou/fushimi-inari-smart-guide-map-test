@@ -9,7 +9,7 @@
 
     const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
     // 初回表示はトイレ③を中心にする（MapLibreの座標順は [経度, 緯度]）。
-    const DEFAULT_CENTER = [135.77641661, 34.96794265];
+    const DEFAULT_CENTER = [135.777558305, 34.968021325]; // 新池とトイレ③の中点
     const LEAFLET_ZOOM_OFFSET = 1;
     const DEFAULT_ZOOM = 17;
     // 3D表示は常時ON。角度を固定し、表示切替時のカメラ移動をなくす。

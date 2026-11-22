@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v180 fixed 3D terrain readiness fix) */
+/* Fushimi Inari Smart Guide — offline support (v181 midpoint initial center) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v180';
+const CACHE_NAME = 'fushimi-smart-guide-v181';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 180;
+const WORKER_VERSION = 181;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
