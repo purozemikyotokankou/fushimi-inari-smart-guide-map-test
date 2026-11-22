@@ -6935,50 +6935,6 @@ body.planner-page .liquid-cursor {
     gap: 8px;
     pointer-events: none;
 }
-/* V167 — only JR Nara Line and Keihan Main Line receive distinct rail colors. */
-.maplibre-rail-legend {
-    position: absolute;
-    z-index: 955;
-    top: 154px;
-    right: 12px;
-    display: grid;
-    gap: 7px;
-    padding: 9px 11px;
-    border: 1px solid rgba(255,255,255,.88);
-    border-radius: 13px;
-    background: rgba(255,255,255,.84);
-    color: #35404a;
-    box-shadow: 0 5px 16px rgba(25,35,45,.11), inset 0 1px 0 rgba(255,255,255,.9);
-    font: 700 10px/1.2 system-ui, -apple-system, sans-serif;
-    letter-spacing: .01em;
-    pointer-events: none;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-}
-.maplibre-rail-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    white-space: nowrap;
-}
-.maplibre-rail-legend-swatch {
-    display: inline-block;
-    flex: 0 0 19px;
-    width: 19px;
-    height: 4px;
-    border-radius: 99px;
-    background: var(--rail-line-color);
-    box-shadow: 0 0 0 1px rgba(30,40,50,.08);
-}
-.maplibre-rail-legend-status {
-    padding-top: 2px;
-    color: #86513f;
-    font-size: 9px;
-    font-weight: 650;
-}
-.maplibre-rail-legend[data-status="error"] {
-    border-color: rgba(190, 90, 70, .45);
-}
 .maplibre-camera-button {
     width: 46px;
     height: 42px;
@@ -6993,6 +6949,34 @@ body.planner-page .liquid-cursor {
     pointer-events: auto;
     cursor: pointer;
 }
+
+.maplibre-terrain-button {
+    min-width: 62px;
+    height: 42px;
+    padding: 0 9px;
+    border: 1px solid rgba(255,255,255,.92);
+    border-radius: 14px;
+    background: rgba(255,255,255,.88);
+    color: #27312c;
+    box-shadow: 0 7px 19px rgba(20,30,24,.12), inset 0 1px 0 white;
+    font: 800 11px/1 system-ui, sans-serif;
+    letter-spacing: -.02em;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    pointer-events: auto;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.maplibre-terrain-button[aria-pressed="true"] {
+    background: rgba(39,49,44,.94);
+    color: #fff;
+    border-color: rgba(255,255,255,.76);
+}
+.maplibre-terrain-button:disabled {
+    opacity: .68;
+    cursor: progress;
+}
+
 .maplibre-camera-hint {
     padding: 7px 10px;
     border: 1px solid rgba(255,255,255,.86);
@@ -7005,8 +6989,8 @@ body.planner-page .liquid-cursor {
 }
 @media (max-width: 700px) {
     .maplibre-camera-control { top: calc(100px + env(safe-area-inset-top)); left: 10px; }
-    .maplibre-rail-legend { top: calc(148px + env(safe-area-inset-top)); right: 8px; padding: 8px 9px; gap: 6px; font-size: 9px; }
     .maplibre-camera-button { width: 42px; height: 39px; border-radius: 12px; }
+    .maplibre-terrain-button { min-width: 54px; height: 39px; border-radius: 12px; padding: 0 7px; font-size: 10px; }
     .maplibre-camera-hint { display: none; }
     #maplibreBase .maplibregl-ctrl-bottom-right { right: 4px !important; bottom: 4px !important; }
     #maplibreBase .maplibregl-ctrl-attrib { font-size: 8px; }

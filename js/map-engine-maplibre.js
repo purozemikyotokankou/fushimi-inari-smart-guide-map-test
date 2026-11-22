@@ -12,9 +12,14 @@
     const DEFAULT_CENTER = [135.77641661, 34.96794265];
     const LEAFLET_ZOOM_OFFSET = 1;
     const DEFAULT_ZOOM = 17;
-    const DEFAULT_PITCH = 48;
+    const DEFAULT_PITCH = 42;
     const NAVIGATION_PITCH = 52;
     const MAX_PITCH = 60;
+    const TERRAIN_SOURCE_ID = "fushimi-terrain-dem";
+    const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
+    const HILLSHADE_LAYER_ID = "fushimi-terrain-hillshade";
+    const TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+    const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
 
     let mapLibreMap = null;
     let leafletMap = null;
@@ -23,7 +28,10 @@
     let overlayFrame = 0;
     let programmaticCameraMove = false;
     let viewButton = null;
+    let terrainButton = null;
     let viewButtonHost = null;
+    let terrainEnabled = false;
+    let terrainTogglePending = false;
     let isAdding3DBuildings = false;
     let loadTimeoutId = 0;
     const markerTransformCache = new WeakMap();
@@ -205,104 +213,6 @@
         return anyVectorSource ? anyVectorSource[0] : null;
     }
 
-    // 伏見稲荷周辺に表示される鉄道路線は、事業者名による色分けをせず
-    // OpenMapTiles transportation の鉄道フィーチャーを一括で同じ色にする。
-    // 外部API・Overpass・路線名ラベルには依存しない。
-    const UNIFORM_RAIL_LAYER_ID = "fushimi-uniform-rail-lines";
-    const UNIFORM_RAIL_COLOR = "#3979A8";
-    const RAIL_SUBCLASSES = [
-        "rail", "narrow_gauge", "preserved", "funicular",
-        "subway", "light_rail", "monorail", "tram"
-    ];
-
-    function applyUniformRailwayStyle() {
-        if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return false;
-
-        const sourceId = getVectorSourceId();
-        if (!sourceId) {
-            console.warn("[Fushimi Map] 鉄道路線レイヤーを追加できません。ベクタータイルソースが見つかりません。");
-            return false;
-        }
-
-        const style = mapLibreMap.getStyle();
-        const source = style?.sources?.[sourceId];
-        if (!source || source.type !== "vector") {
-            console.warn("[Fushimi Map] 鉄道路線レイヤーのソースがベクタータイルではありません。");
-            return false;
-        }
-
-        const filter = [
-            "all",
-            ["==", "$type", "LineString"],
-            ["in", "subclass", ...RAIL_SUBCLASSES]
-        ];
-        const width = [
-            "interpolate", ["linear"], ["zoom"],
-            10, 1.5,
-            13, 2.2,
-            15, 3.0,
-            17, 4.0,
-            19, 5.0
-        ];
-
-        // ベースマップ側に既存の鉄道線レイヤーがあれば、それも同じ色へ統一。
-        // カスタムレイヤーは既存スタイルに該当レイヤーがない場合の補完として残す。
-        let nativeRailLayerCount = 0;
-        (style.layers || []).forEach((layer) => {
-            if (layer.type !== "line" || layer["source-layer"] !== "transportation") return;
-            const filterText = JSON.stringify(layer.filter || []).toLowerCase();
-            const isRail = filterText.includes("subclass") &&
-                RAIL_SUBCLASSES.some((name) => filterText.includes(`"${name}"`));
-            if (!isRail) return;
-            try {
-                mapLibreMap.setLayoutProperty(layer.id, "visibility", "visible");
-                mapLibreMap.setPaintProperty(layer.id, "line-color", UNIFORM_RAIL_COLOR);
-                mapLibreMap.setPaintProperty(layer.id, "line-opacity", 1);
-                mapLibreMap.setPaintProperty(layer.id, "line-width", width);
-                nativeRailLayerCount += 1;
-            } catch (error) {
-                console.warn(`[Fushimi Map] 既存の鉄道路線レイヤーを統一色に変更できません: ${layer.id}`, error);
-            }
-        });
-
-        try {
-            if (!mapLibreMap.getLayer(UNIFORM_RAIL_LAYER_ID)) {
-                mapLibreMap.addLayer({
-                    id: UNIFORM_RAIL_LAYER_ID,
-                    type: "line",
-                    source: sourceId,
-                    "source-layer": "transportation",
-                    minzoom: 8,
-                    filter,
-                    layout: {
-                        "visibility": "visible",
-                        "line-cap": "round",
-                        "line-join": "round"
-                    },
-                    paint: {
-                        "line-color": UNIFORM_RAIL_COLOR,
-                        "line-opacity": 1,
-                        "line-width": width
-                    }
-                });
-            } else {
-                mapLibreMap.setFilter(UNIFORM_RAIL_LAYER_ID, filter);
-                mapLibreMap.setLayoutProperty(UNIFORM_RAIL_LAYER_ID, "visibility", "visible");
-                mapLibreMap.setPaintProperty(UNIFORM_RAIL_LAYER_ID, "line-color", UNIFORM_RAIL_COLOR);
-                mapLibreMap.setPaintProperty(UNIFORM_RAIL_LAYER_ID, "line-opacity", 1);
-                mapLibreMap.setPaintProperty(UNIFORM_RAIL_LAYER_ID, "line-width", width);
-            }
-
-            // 3D建物やベースマップの線に隠れないよう、鉄道路線を最前面に置く。
-            mapLibreMap.moveLayer(UNIFORM_RAIL_LAYER_ID);
-            console.info(`[Fushimi Map] 全鉄道路線を同じ色で表示: ${UNIFORM_RAIL_COLOR} (existing layers: ${nativeRailLayerCount})`);
-            return true;
-        } catch (error) {
-            console.error("[Fushimi Map] 鉄道路線レイヤーの追加に失敗しました:", error);
-            return false;
-        }
-    }
-
     function applyMapReadabilityStyle() {
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
         const layers = mapLibreMap.getStyle()?.layers || [];
@@ -315,17 +225,12 @@
 
         });
 
-        // 事業者別データの取得は行わず、鉄道フィーチャーをすべて同じ色で描画する。
-        applyUniformRailwayStyle();
     }
 
     function add3DBuildings() {
         if (!mapLibreMap || !mapLibreMap.isStyleLoaded() || isAdding3DBuildings) return;
         applyMapReadabilityStyle();
-        if (mapLibreMap.getLayer("fushimi-3d-buildings")) {
-            applyUniformRailwayStyle();
-            return;
-        }
+        if (mapLibreMap.getLayer("fushimi-3d-buildings")) return;
         const sourceId = getVectorSourceId();
         if (!sourceId) {
             console.warn("[Fushimi Map Test] The Positron style did not expose a vector source for 3D buildings.");
@@ -358,13 +263,107 @@
                     "fill-extrusion-vertical-gradient": true
                 }
             }, firstLabel ? firstLabel.id : undefined);
-            // 3D建物の上に全鉄道路線を同じ色で表示する。
-            applyUniformRailwayStyle();
             console.info("[Fushimi Map Test] 3D building extrusion layer added.");
         } catch (error) {
             console.warn("[Fushimi Map Test] 3D buildings are unavailable in this style:", error);
         } finally {
             isAdding3DBuildings = false;
+        }
+    }
+
+    function updateTerrainButton() {
+        if (!terrainButton) return;
+        terrainButton.textContent = terrainEnabled ? "山3D ON" : "山3D";
+        terrainButton.setAttribute("aria-pressed", String(terrainEnabled));
+        terrainButton.setAttribute("aria-label", terrainEnabled ? "稲荷山の3D地形をオフ" : "稲荷山の3D地形をオン");
+        terrainButton.title = terrainEnabled ? "稲荷山の立体地形をオフにする" : "標高データを読み込んで稲荷山を立体表示する";
+        terrainButton.disabled = terrainTogglePending;
+    }
+
+    function addTerrainSourcesIfNeeded() {
+        if (!mapLibreMap) throw new Error("地図がまだ準備できていません。");
+        if (!document.querySelector('link[data-fushimi-terrain-preconnect]')) {
+            const preconnect = document.createElement("link");
+            preconnect.rel = "preconnect";
+            preconnect.href = "https://s3.amazonaws.com";
+            preconnect.crossOrigin = "anonymous";
+            preconnect.dataset.fushimiTerrainPreconnect = "true";
+            document.head.appendChild(preconnect);
+        }
+        if (!mapLibreMap.getSource(TERRAIN_SOURCE_ID)) {
+            mapLibreMap.addSource(TERRAIN_SOURCE_ID, {
+                type: "raster-dem",
+                tiles: [TERRAIN_TILE_URL],
+                tileSize: 256,
+                minzoom: 0,
+                maxzoom: 15,
+                encoding: "terrarium",
+                attribution: TERRAIN_ATTRIBUTION
+            });
+        }
+        if (!mapLibreMap.getSource(HILLSHADE_SOURCE_ID)) {
+            mapLibreMap.addSource(HILLSHADE_SOURCE_ID, {
+                type: "raster-dem",
+                tiles: [TERRAIN_TILE_URL],
+                tileSize: 256,
+                minzoom: 0,
+                maxzoom: 15,
+                encoding: "terrarium",
+                attribution: TERRAIN_ATTRIBUTION
+            });
+        }
+
+        if (!mapLibreMap.getLayer(HILLSHADE_LAYER_ID)) {
+            const layers = mapLibreMap.getStyle()?.layers || [];
+            const firstLineOrSymbol = layers.find((layer) => layer.type === "line" || layer.type === "symbol");
+            mapLibreMap.addLayer({
+                id: HILLSHADE_LAYER_ID,
+                type: "hillshade",
+                source: HILLSHADE_SOURCE_ID,
+                paint: {
+                    "hillshade-exaggeration": 0.34,
+                    "hillshade-shadow-color": "#68716d",
+                    "hillshade-highlight-color": "#fff8e9",
+                    "hillshade-illumination-direction": 335
+                }
+            }, firstLineOrSymbol ? firstLineOrSymbol.id : undefined);
+        } else {
+            mapLibreMap.setLayoutProperty(HILLSHADE_LAYER_ID, "visibility", "visible");
+        }
+    }
+
+    function toggleTerrain() {
+        if (!mapLibreMap || !loaded || terrainTogglePending) return;
+        terrainTogglePending = true;
+        updateTerrainButton();
+
+        try {
+            if (terrainEnabled) {
+                mapLibreMap.setTerrain(null);
+                if (mapLibreMap.getLayer(HILLSHADE_LAYER_ID)) {
+                    mapLibreMap.setLayoutProperty(HILLSHADE_LAYER_ID, "visibility", "none");
+                }
+                terrainEnabled = false;
+                console.info("[Fushimi Map] 3D terrain disabled.");
+            } else {
+                addTerrainSourcesIfNeeded();
+                mapLibreMap.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.35 });
+                terrainEnabled = true;
+                // 山の起伏が見える角度へ。すでに傾いている場合は現在の角度を尊重する。
+                const targetPitch = Math.min(MAX_PITCH, Math.max(mapLibreMap.getPitch(), 54));
+                if (Math.abs(mapLibreMap.getPitch() - targetPitch) > 0.5) {
+                    mapLibreMap.easeTo({ pitch: targetPitch, duration: 650, essential: true });
+                }
+                console.info("[Fushimi Map] 3D terrain enabled (Mapzen / AWS Terrain Tiles, 1.35x).");
+            }
+        } catch (error) {
+            terrainEnabled = false;
+            console.warn("[Fushimi Map] 3D terrain could not be enabled:", error);
+            if (terrainButton) terrainButton.title = "地形データを設定できませんでした。もう一度お試しください。";
+        } finally {
+            terrainTogglePending = false;
+            updateTerrainButton();
+            scheduleOverlayProjection();
         }
     }
 
@@ -384,9 +383,11 @@
         viewButtonHost = host;
         const wrapper = document.createElement("div");
         wrapper.className = "maplibre-camera-control";
-        wrapper.innerHTML = '<button type="button" class="maplibre-camera-button" aria-label="2D表示に切り替え" aria-pressed="true">2D</button><span class="maplibre-camera-hint">2本指で傾き・回転</span>';
+        wrapper.innerHTML = '<button type="button" class="maplibre-camera-button" aria-label="2D表示に切り替え" aria-pressed="true">2D</button><button type="button" class="maplibre-terrain-button" aria-label="稲荷山の3D地形をオン" aria-pressed="false">山3D</button><span class="maplibre-camera-hint">2本指で傾き・回転</span>';
         host.appendChild(wrapper);
-        viewButton = wrapper.querySelector("button");
+        viewButton = wrapper.querySelector(".maplibre-camera-button");
+        terrainButton = wrapper.querySelector(".maplibre-terrain-button");
+        terrainButton.addEventListener("click", toggleTerrain);
         viewButton.addEventListener("click", function () {
             if (!mapLibreMap) return;
             const targetPitch = mapLibreMap.getPitch() > 8 ? 0 : DEFAULT_PITCH;
@@ -399,6 +400,7 @@
             window.setTimeout(function () { programmaticCameraMove = false; }, 1300);
         });
         updateViewButton();
+        updateTerrainButton();
     }
 
     function createMap() {
@@ -414,6 +416,8 @@
                     return;
                 }
                 loaded = false;
+                terrainEnabled = false;
+                if (terrainButton) updateTerrainButton();
                 showStatus("3Dマップを再読み込みしています…", false);
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 mapLibreMap.setStyle(STYLE_URL);
@@ -448,7 +452,14 @@
                 doubleClickZoom: true,
                 attributionControl: { compact: false },
                 renderWorldCopies: false,
-                cooperativeGestures: false
+                cooperativeGestures: false,
+                // High-DPI端末でのGPU描画負荷を抑え、初回表示を軽くする。
+                pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
+                // 使わないズーム階層のタイルを抱え込みすぎない。
+                maxTileCacheZoomLevels: 4,
+                // ラベル衝突フェードを省略（このアプリでは地名テキストを非表示）。
+                fadeDuration: 0,
+                cancelPendingTileRequestsWhileZooming: true
             });
 
             function handleMapStyleReady() {
@@ -491,8 +502,13 @@
             mapLibreMap.on("rotatestart", notifyUserMapGesture);
             mapLibreMap.on("pitchstart", notifyUserMapGesture);
             mapLibreMap.on("zoomstart", notifyUserMapGesture);
-            mapLibreMap.on("move", updateViewButton);
-            mapLibreMap.on("render", updateLeafletOverlayProjection);
+            mapLibreMap.on("move", function () {
+                updateViewButton();
+                scheduleOverlayProjection();
+            });
+            mapLibreMap.on("resize", scheduleOverlayProjection);
+            mapLibreMap.on("terrain", scheduleOverlayProjection);
+            mapLibreMap.on("idle", scheduleOverlayProjection);
 
             return mapLibreMap;
         } catch (error) {
@@ -544,7 +560,7 @@
             } finally {
                 syncLock = null;
             }
-            // MapLibre's following render event updates the overlay in this same frame.
+            // Camera movement schedules the overlay projection once per animation frame.
         }
 
         function syncMapLibreFromLeaflet() {
@@ -562,7 +578,7 @@
             } finally {
                 syncLock = null;
             }
-            // The resulting MapLibre render will project the overlay in-frame.
+            // The MapLibre move event schedules the matching overlay projection.
         }
 
         mapLibreMap.on("moveend", syncLeafletFromMapLibre);

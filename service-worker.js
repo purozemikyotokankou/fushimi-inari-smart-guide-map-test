@@ -1,9 +1,9 @@
 /* Fushimi Inari Smart Guide — offline support (v175 fast-load assets) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v175';
+const CACHE_NAME = 'fushimi-smart-guide-v176';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 175;
+const WORKER_VERSION = 176;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -134,11 +134,13 @@ async function preloadAllSilently(client) {
   // Prepare only what is needed to open the map. Large spot photos and the
   // decorative home video are fetched on demand, so they cannot compete with
   // the first map/style/tile requests or consume mobile data before they are used.
-  await cacheGroup(PRELOAD_CORE, 5);
-  // Keep cached JSON available instantly. The normal JSON fetch handler
-  // refreshes it in the background after serving the cached response.
-  await cacheGroup(PRELOAD_DATA, 2);
-  await cacheGroup(PRELOAD_ICONS, 5);
+  await cacheGroup(PRELOAD_CORE, 4);
+  // Keep the small spot/route JSON available, but avoid saturating the network.
+  await cacheGroup(PRELOAD_DATA, 1);
+  // Give the first visible map and its currently requested tiles a head start.
+  await new Promise((resolve) => setTimeout(resolve, 1400));
+  // Icons are useful for later interactions; warm them with low concurrency.
+  await cacheGroup(PRELOAD_ICONS, 2);
   client?.postMessage({ type: 'FUSHIMI_SILENT_PRELOAD_RESULT', status: 'finished' });
 }
 
