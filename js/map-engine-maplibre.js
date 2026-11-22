@@ -19,6 +19,9 @@
     const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
     const HILLSHADE_LAYER_ID = "fushimi-terrain-hillshade";
     const TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+    // 標高データは伏見稲荷周辺だけに限定。通常の地図表示・移動範囲は制限しない。
+    // [西, 南, 東, 北]。参道・稲荷山と周辺を含む約2km圏。
+    const TERRAIN_BOUNDS = [135.7620, 34.9500, 135.8060, 34.9865];
     const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
 
     let mapLibreMap = null;
@@ -276,7 +279,7 @@
         terrainButton.textContent = terrainEnabled ? "山3D ON" : "山3D";
         terrainButton.setAttribute("aria-pressed", String(terrainEnabled));
         terrainButton.setAttribute("aria-label", terrainEnabled ? "稲荷山の3D地形をオフ" : "稲荷山の3D地形をオン");
-        terrainButton.title = terrainEnabled ? "稲荷山の立体地形をオフにする" : "標高データを読み込んで稲荷山を立体表示する";
+        terrainButton.title = terrainEnabled ? "稲荷山の立体地形をオフにする" : "伏見稲荷周辺だけの標高データを読み込んで立体表示する";
         terrainButton.disabled = terrainTogglePending;
     }
 
@@ -295,8 +298,10 @@
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
                 tileSize: 256,
-                minzoom: 0,
-                maxzoom: 15,
+                bounds: TERRAIN_BOUNDS,
+                minzoom: 10,
+                // z14までに抑えて高密度DEMの転送量と地形メッシュ負荷を削減。
+                maxzoom: 14,
                 encoding: "terrarium",
                 attribution: TERRAIN_ATTRIBUTION
             });
@@ -306,8 +311,10 @@
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
                 tileSize: 256,
-                minzoom: 0,
-                maxzoom: 15,
+                bounds: TERRAIN_BOUNDS,
+                minzoom: 10,
+                // 陰影はさらに低いズームの地形タイルを使い、描画負荷を抑える。
+                maxzoom: 13,
                 encoding: "terrarium",
                 attribution: TERRAIN_ATTRIBUTION
             });

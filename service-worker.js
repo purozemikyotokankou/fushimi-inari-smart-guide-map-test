@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v175 fast-load assets) */
+/* Fushimi Inari Smart Guide — offline support (v177 local-only Fushimi terrain) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v176';
+const CACHE_NAME = 'fushimi-smart-guide-v177';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 176;
+const WORKER_VERSION = 177;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
