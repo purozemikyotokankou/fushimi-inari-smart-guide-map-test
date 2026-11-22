@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v177 local-only Fushimi terrain) */
+/* Fushimi Inari Smart Guide — offline support (v178 Toilet 3 750m fixed 3D terrain) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v177';
+const CACHE_NAME = 'fushimi-smart-guide-v178';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 177;
+const WORKER_VERSION = 178;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
