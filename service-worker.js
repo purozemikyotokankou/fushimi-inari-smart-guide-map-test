@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v173) */
+/* Fushimi Inari Smart Guide — offline support (v175 fast-load assets) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v173';
+const CACHE_NAME = 'fushimi-smart-guide-v175';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 173;
+const WORKER_VERSION = 175;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -17,33 +17,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
 });
 
-async function migrateCachedVideo(newCache) {
-  // Keep a previously downloaded video when upgrading from V140, avoiding a
-  // needless full download just because the application cache version changed.
-  const canonicalUrl = new URL(`.${VIDEO_PATH}`, self.registration.scope).href;
-  if (await newCache.match(canonicalUrl, { ignoreSearch: true })) return;
-  const oldNames = (await caches.keys()).filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
-  for (const name of oldNames) {
-    try {
-      const oldCache = await caches.open(name);
-      const requests = await oldCache.keys();
-      const videoRequest = requests.find((request) => new URL(request.url).pathname.endsWith(VIDEO_PATH));
-      if (!videoRequest) continue;
-      const response = await oldCache.match(videoRequest);
-      if (response) {
-        await newCache.put(canonicalUrl, response.clone());
-        return;
-      }
-    } catch (error) {
-      console.warn('[Fushimi SW] Previous video cache migration skipped:', error);
-    }
-  }
-}
-
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const currentCache = await caches.open(CACHE_NAME);
-    await migrateCachedVideo(currentCache);
+    await caches.open(CACHE_NAME);
     const keys = await caches.keys();
     await Promise.all(keys
       .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
@@ -59,7 +35,10 @@ async function matchCached(request) {
 }
 
 async function fetchAndCache(request, cache) {
-  const response = await fetch(request);
+  const pathname = new URL(request.url).pathname;
+  const isImageAsset = /\.(?:jpe?g|png|webp|avif)$/i.test(pathname);
+  const networkRequest = isImageAsset ? new Request(request, { cache: 'reload' }) : request;
+  const response = await fetch(networkRequest);
   if (response && (response.ok || response.type === 'opaque')) {
     try { await cache.put(request, response.clone()); } catch (_) { /* quota or opaque restrictions */ }
   }
@@ -82,11 +61,11 @@ async function preloadVideoLast(client) {
 }
 
 const PRELOAD_CORE = [
-  './index.html', './home.html', './planner.html', './spots.html',
+  './index.html', './home.html', './planner.html',
   './css/style.css', './css/planner.css',
   './js/language.js', './js/home-ui.js', './js/home-boot.js',
   './js/planner.js', './js/map-engine-maplibre.js', './js/planner-weather.js', './js/planner-ambient-light.js',
-  './js/spots.js', './js/liquid-cursor.js', './js/app-boot.js',
+  './js/liquid-cursor.js', './js/app-boot.js',
   './service-worker.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -113,8 +92,6 @@ const PRELOAD_ICONS = [
   './images/icons/washlet-gray.svg', './images/icons/washlet.svg',
   './images/icons/wheelchair-gray.svg', './images/icons/wheelchair.svg'
 ];
-const PRELOAD_HERO_IMAGES = ['./images/hero2.jpg', './images/hero3.jpg', './images/hero4.jpg'];
-const MAX_BACKGROUND_IMAGE_BYTES = 600 * 1024;
 
 function absoluteUrl(path) {
   return new URL(path, self.registration.scope).href;
@@ -154,28 +131,14 @@ async function cacheGroup(paths, concurrency = 4, options = {}) {
 }
 
 async function preloadAllSilently(client) {
-  // App shell and map data first; the visitor is already free to use the site.
+  // Prepare only what is needed to open the map. Large spot photos and the
+  // decorative home video are fetched on demand, so they cannot compete with
+  // the first map/style/tile requests or consume mobile data before they are used.
   await cacheGroup(PRELOAD_CORE, 5);
-  await cacheGroup(PRELOAD_DATA, 2, { refresh: true });
-  const cache = await caches.open(CACHE_NAME);
-  let spotImages = [];
-  try {
-    const spotsResponse = await cache.match(absoluteUrl('./data/spots.json'), { ignoreSearch: true });
-    const spots = spotsResponse ? await spotsResponse.clone().json() : [];
-    if (Array.isArray(spots)) {
-      spotImages = spots
-        .map((spot) => spot && typeof spot.image === 'string' ? spot.image.trim() : '')
-        .filter((image) => image && !/^https?:\/\//i.test(image) && !image.includes('..') && /\.(?:jpe?g|png|webp|avif)$/i.test(image))
-        .map((image) => `./images/${image.replace(/^\/+/, '')}`);
-    }
-  } catch (_) { /* Keep the rest of the offline cache useful if the JSON is malformed. */ }
-
-  const allImages = Array.from(new Set([...PRELOAD_HERO_IMAGES, ...spotImages]));
+  // Keep cached JSON available instantly. The normal JSON fetch handler
+  // refreshes it in the background after serving the cached response.
+  await cacheGroup(PRELOAD_DATA, 2);
   await cacheGroup(PRELOAD_ICONS, 5);
-  await cacheGroup(allImages, 3, { imageLimit: MAX_BACKGROUND_IMAGE_BYTES });
-
-  // Large video is deliberately last and never blocks page navigation.
-  await preloadVideoLast(client);
   client?.postMessage({ type: 'FUSHIMI_SILENT_PRELOAD_RESULT', status: 'finished' });
 }
 
@@ -217,7 +180,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cached = await caches.match(new URL(request.url).href, { ignoreSearch: true });
       if (!cached) {
-        try { return await fetch(request); } catch (_) { return Response.error(); }
+        // The asset was recompressed in V175. Do not let a fresh browser HTTP-cache
+        // entry return the previous, much larger MP4 after the service-worker update.
+        try { return await fetch(new Request(request, { cache: 'reload' })); }
+        catch (_) { return Response.error(); }
       }
       const blob = await cached.blob();
       const rangeHeader = request.headers.get('range') || '';
