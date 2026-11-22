@@ -6832,7 +6832,7 @@ body.planner-page .liquid-cursor {
 
 
 /* ============================================================
-   V182 — MapLibre 3D basemap + terrain-aware Leaflet overlays
+   V183 — MapLibre 3D basemap + clean marker repaint
    Leaflet is retained only for existing SVG pins, paths and popups.
 ============================================================ */
 #map {
@@ -6872,9 +6872,11 @@ body.planner-page .liquid-cursor {
 #map.maplibre-active .leaflet-popup-pane,
 #map.maplibre-active .leaflet-popup { pointer-events: auto !important; }
 #map.maplibre-active .leaflet-marker-icon {
-    will-change: transform;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
+    /* Avoid persistent GPU marker textures that can leave trails while panning. */
+    will-change: auto !important;
+    backface-visibility: visible !important;
+    -webkit-backface-visibility: visible !important;
+    transition: none !important;
 }
 #maplibreBase .maplibregl-ctrl-bottom-right {
     z-index: 900 !important;
@@ -7000,6 +7002,10 @@ body.planner-page .liquid-cursor {
    treatment as soon as movement stops. The SVG artwork and category colors stay unchanged. */
 #map.is-camera-moving .leaflet-marker-icon {
     transition: none !important;
+    animation: none !important;
+    will-change: auto !important;
+    backface-visibility: visible !important;
+    -webkit-backface-visibility: visible !important;
 }
 #map.is-camera-moving .custom-map-marker .marker-pin {
     box-shadow: 0 0 0 1px rgba(255,255,255,.74) !important;

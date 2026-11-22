@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v182 terrain-aware pins + native route)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v183 clean marker repaint + native route)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet route panes are projected onto the same camera plane with a
  * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
@@ -31,7 +31,7 @@
     let terrainEnabled = false;
     let isAdding3DBuildings = false;
     let loadTimeoutId = 0;
-    const markerTransformCache = new WeakMap();
+    const markerPositionCache = new WeakMap();
     const markerLayers = new Set();
     const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
     let markerProjectionMatrix = null;
@@ -237,16 +237,28 @@
             if (!point) return;
             const applyPosition = (element) => {
                 if (!element) return;
-                const x = Number(point.x.toFixed(2));
-                const y = Number(point.y.toFixed(2));
-                const value = `translate3d(${x}px, ${y}px, 0)`;
-                if (markerTransformCache.get(element) !== value || element.style.transform !== value) {
-                    element.style.transform = value;
-                    element.style.webkitTransform = value;
-                    element.style.willChange = "transform";
-                    element.style.backfaceVisibility = "hidden";
-                    element.style.webkitBackfaceVisibility = "hidden";
-                    markerTransformCache.set(element, value);
+                // Keep map pins in normal page layers instead of forcing one GPU
+                // compositing layer per icon. On some Chromium/GPU combinations,
+                // rapidly changing translate3d marker textures leave visible trails.
+                // Leaflet's marker pane is aligned to the map container, so left/top
+                // are the correct screen-space coordinates after the pane transform
+                // has been neutralized above.
+                const x = Number(point.x.toFixed(1));
+                const y = Number(point.y.toFixed(1));
+                const value = `${x}|${y}`;
+                if (markerPositionCache.get(element) !== value ||
+                    element.style.left !== `${x}px` ||
+                    element.style.top !== `${y}px` ||
+                    element.style.transform !== "none") {
+                    element.style.left = `${x}px`;
+                    element.style.top = `${y}px`;
+                    element.style.transform = "none";
+                    element.style.webkitTransform = "none";
+                    element.style.willChange = "auto";
+                    element.style.backfaceVisibility = "visible";
+                    element.style.webkitBackfaceVisibility = "visible";
+                    element.style.transition = "none";
+                    markerPositionCache.set(element, value);
                 }
                 element._leaflet_pos = window.L.point(point.x, point.y);
             };
