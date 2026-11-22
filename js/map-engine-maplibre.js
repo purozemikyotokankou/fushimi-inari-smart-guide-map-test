@@ -1,8 +1,8 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v183 clean marker repaint + native route)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v184 isolated marker overlay + linked route style)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
- * Existing Leaflet route panes are projected onto the same camera plane with a
- * projective transform. Leaflet marker DOM nodes are repositioned with MapLibre
- * screen coordinates so the custom SVG pins stay upright and clickable.
+ * Existing Leaflet vector panes are projected onto the same camera plane with a
+ * projective transform. Visible spot pins use one isolated proxy per marker; the
+ * original Leaflet marker nodes remain hidden to prevent duplicate paint trails.
  */
 (function () {
     "use strict";
@@ -17,7 +17,18 @@
     const TERRAIN_SOURCE_ID = "fushimi-terrain-dem";
     const HILLSHADE_LAYER_ID = "fushimi-terrain-hillshade";
     const TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-    // 標高データの取得範囲は制限しない。前版で読み込み不具合が出た範囲制限を撤回。
+    // DEMは伏見稲荷周辺の半径約2kmをカバーする矩形タイル範囲だけ取得する。
+    // MapLibreのsource boundsは矩形指定のため、2km円を内包する外接矩形になる。
+    const TERRAIN_RANGE_CENTER = [135.784020, 34.968186]; // [lng, lat]
+    const TERRAIN_RANGE_RADIUS_METERS = 2000;
+    const TERRAIN_BOUNDS = (() => {
+        const lng = TERRAIN_RANGE_CENTER[0];
+        const lat = TERRAIN_RANGE_CENTER[1];
+        const latDelta = TERRAIN_RANGE_RADIUS_METERS / 111320;
+        const lngDelta = TERRAIN_RANGE_RADIUS_METERS / (111320 * Math.cos(lat * Math.PI / 180));
+        return [lng - lngDelta, lat - latDelta, lng + lngDelta, lat + latDelta];
+    })();
+    // Terrainとhillshadeは別ソースにし、MapLibre推奨の描画品質を保つ。
     const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
     const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
 
@@ -31,8 +42,10 @@
     let terrainEnabled = false;
     let isAdding3DBuildings = false;
     let loadTimeoutId = 0;
-    const markerPositionCache = new WeakMap();
     const markerLayers = new Set();
+    const markerProxyEntries = new Map();
+    let markerOverlayContainer = null;
+    let markerPaneObserver = null;
     const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
     let markerProjectionMatrix = null;
 
@@ -42,6 +55,7 @@
     const ROUTE_BASE_LAYER_ID = "fushimi-native-route-base";
     const ROUTE_BEAM_LAYER_ID = "fushimi-native-route-beam";
     let activeRouteGeoJSON = null;
+    let activeRouteStyle = { color: "#FF9900", beamColor: "#FFFFFF" };
     let routeBeamFrame = 0;
     let routeBeamStart = 0;
     let routeBeamLastPaint = 0;
@@ -171,6 +185,136 @@
         return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
     }
 
+    function ensureMarkerOverlay() {
+        if (!leafletMap) return null;
+        const host = leafletMap.getContainer();
+        if (markerOverlayContainer && markerOverlayContainer.parentNode === host) return markerOverlayContainer;
+        markerOverlayContainer = document.createElement("div");
+        markerOverlayContainer.className = "fushimi-marker-overlay";
+        markerOverlayContainer.setAttribute("aria-label", "Map markers");
+        markerOverlayContainer.style.cssText = [
+            "position:absolute", "inset:0", "z-index:680", "overflow:visible",
+            "pointer-events:none", "transform:none", "contain:layout style"
+        ].join(";");
+        host.appendChild(markerOverlayContainer);
+        return markerOverlayContainer;
+    }
+
+    function concealLeafletMarkerElement(element) {
+        if (!element) return;
+        // Leaflet keeps this original node for its marker lifecycle and event state,
+        // but only the isolated proxy is allowed to paint on the 3D map.
+        element.style.setProperty("visibility", "hidden", "important");
+        element.style.setProperty("opacity", "0", "important");
+        element.style.setProperty("pointer-events", "none", "important");
+        element.style.setProperty("transition", "none", "important");
+    }
+
+    function removeMarkerProxy(layer) {
+        const entry = markerProxyEntries.get(layer);
+        if (entry?.element?.parentNode) entry.element.parentNode.removeChild(entry.element);
+        markerProxyEntries.delete(layer);
+    }
+
+    function createMarkerProxy(layer, sourceIcon) {
+        const overlay = ensureMarkerOverlay();
+        if (!overlay || !sourceIcon) return null;
+        const element = sourceIcon.cloneNode(true);
+        element.classList.add("fushimi-marker-proxy");
+        element.removeAttribute("id");
+        element.style.setProperty("visibility", "visible", "important");
+        element.style.setProperty("opacity", "1", "important");
+        element.style.setProperty("pointer-events", layer.options?.interactive === false ? "none" : "auto", "important");
+        element.style.transition = "none";
+        element.style.animation = "none";
+        element.style.willChange = "auto";
+        element.style.transform = "none";
+        element.style.webkitTransform = "none";
+        element.setAttribute("aria-hidden", "false");
+        if (sourceIcon.title) element.title = sourceIcon.title;
+        if (sourceIcon.getAttribute("aria-label")) element.setAttribute("aria-label", sourceIcon.getAttribute("aria-label"));
+
+        const stopMapGesture = (event) => event.stopPropagation();
+        ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick"].forEach((type) => {
+            element.addEventListener(type, stopMapGesture, { passive: true });
+        });
+        element.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (layer.options?.interactive === false) return;
+            layer.fire("click", { latlng: layer.getLatLng(), originalEvent: event });
+        });
+        element.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (layer.options?.interactive === false) return;
+            layer.fire("click", { latlng: layer.getLatLng(), originalEvent: event });
+        });
+        overlay.appendChild(element);
+        const entry = { source: sourceIcon, element };
+        markerProxyEntries.set(layer, entry);
+        return entry;
+    }
+
+    function updateMarkerProxy(layer) {
+        if (!layer) return;
+        const sourceIcon = layer._icon;
+        if (!sourceIcon || !sourceIcon.isConnected) {
+            concealLeafletMarkerElement(sourceIcon);
+            concealLeafletMarkerElement(layer._shadow);
+            removeMarkerProxy(layer);
+            return;
+        }
+        concealLeafletMarkerElement(sourceIcon);
+        concealLeafletMarkerElement(layer._shadow);
+
+        let entry = markerProxyEntries.get(layer);
+        if (!entry || entry.source !== sourceIcon || !entry.element?.isConnected) {
+            removeMarkerProxy(layer);
+            entry = createMarkerProxy(layer, sourceIcon);
+            if (!entry) return;
+        }
+
+        const proxy = entry.element;
+        // Keep dynamic marker classes (selected/viewed/railway) and pane ordering
+        // in sync with the source while leaving Leaflet's moving DOM node invisible.
+        if (proxy.className !== `${sourceIcon.className} fushimi-marker-proxy`) {
+            proxy.className = `${sourceIcon.className} fushimi-marker-proxy`;
+        }
+        const sourceComputedStyle = getComputedStyle(sourceIcon);
+        proxy.style.width = sourceIcon.style.width || sourceComputedStyle.width || "46px";
+        proxy.style.height = sourceIcon.style.height || sourceComputedStyle.height || "46px";
+        proxy.style.marginLeft = sourceIcon.style.marginLeft || sourceComputedStyle.marginLeft || "";
+        proxy.style.marginTop = sourceIcon.style.marginTop || sourceComputedStyle.marginTop || "";
+        proxy.style.setProperty("pointer-events", layer.options?.interactive === false ? "none" : "auto", "important");
+
+        const latLng = layer.getLatLng();
+        const point = projectCoordinate(latLng.lng, latLng.lat);
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+            // Never leave a proxy at its cloned Leaflet position or at a previous
+            // camera position. It becomes visible again only after a valid current
+            // MapLibre projection is available.
+            proxy.style.setProperty("visibility", "hidden", "important");
+            proxy.style.setProperty("opacity", "0", "important");
+            return;
+        }
+        proxy.style.setProperty("visibility", "visible", "important");
+        proxy.style.setProperty("opacity", "1", "important");
+        proxy.style.left = `${Number(point.x.toFixed(2))}px`;
+        proxy.style.top = `${Number(point.y.toFixed(2))}px`;
+        proxy.style.transform = "none";
+        proxy.style.webkitTransform = "none";
+
+        const paneName = layer.options?.pane || "markerPane";
+        const pane = leafletMap?.getPane(paneName);
+        const paneZ = Number.parseInt(pane ? getComputedStyle(pane).zIndex : "600", 10) || 600;
+        const localZ = Number.parseInt(sourceIcon.style.zIndex || "0", 10) || 0;
+        const isViewing = sourceIcon.classList.contains("planner-marker-viewing") ||
+            !!sourceIcon.querySelector(".custom-map-marker.is-viewing");
+        proxy.style.setProperty("z-index", String(isViewing ? 2100000000 : paneZ * 100000 + localZ), "important");
+    }
+
     function updateLeafletOverlayProjection() {
         if (!loaded || !mapLibreMap || !leafletMap || !window.L) return;
         const size = leafletMap.getSize();
@@ -227,44 +371,10 @@
             }
         });
 
-        // Sub-pixel translate3d avoids Leaflet's integer-pixel rounding during 3D movement.
-        // Track marker layers separately so every camera frame does not scan
-        // hundreds of unrelated route polylines and overlay layers.
-        markerLayers.forEach((layer) => {
-            if (!layer || !layer._icon) return;
-            const latLng = layer.getLatLng();
-            const point = projectCoordinate(latLng.lng, latLng.lat);
-            if (!point) return;
-            const applyPosition = (element) => {
-                if (!element) return;
-                // Keep map pins in normal page layers instead of forcing one GPU
-                // compositing layer per icon. On some Chromium/GPU combinations,
-                // rapidly changing translate3d marker textures leave visible trails.
-                // Leaflet's marker pane is aligned to the map container, so left/top
-                // are the correct screen-space coordinates after the pane transform
-                // has been neutralized above.
-                const x = Number(point.x.toFixed(1));
-                const y = Number(point.y.toFixed(1));
-                const value = `${x}|${y}`;
-                if (markerPositionCache.get(element) !== value ||
-                    element.style.left !== `${x}px` ||
-                    element.style.top !== `${y}px` ||
-                    element.style.transform !== "none") {
-                    element.style.left = `${x}px`;
-                    element.style.top = `${y}px`;
-                    element.style.transform = "none";
-                    element.style.webkitTransform = "none";
-                    element.style.willChange = "auto";
-                    element.style.backfaceVisibility = "visible";
-                    element.style.webkitBackfaceVisibility = "visible";
-                    element.style.transition = "none";
-                    markerPositionCache.set(element, value);
-                }
-                element._leaflet_pos = window.L.point(point.x, point.y);
-            };
-            applyPosition(layer._icon);
-            applyPosition(layer._shadow);
-        });
+        // Leaflet's own marker DOM is never moved on screen. A single isolated
+        // proxy overlay owns all visible marker pixels, so old positions cannot
+        // remain behind when MapLibre and Leaflet update on different frames.
+        markerLayers.forEach(updateMarkerProxy);
     }
 
     function scheduleOverlayProjection() {
@@ -355,12 +465,13 @@
             document.head.appendChild(preconnect);
         }
 
-        // V176で動作していた標高ソース構成に戻す。読み込み範囲・ズーム範囲を限定しない。
-        // Terrain用とHillshade用を分け、MapLibreの描画品質を維持する。
+        // Terrain / hillshadeそれぞれのDEMソースを同じ周辺範囲に制限。
+        // 別ソースを維持して、MapLibreで推奨される地形と陰影の描画品質を保つ。
         if (!mapLibreMap.getSource(TERRAIN_SOURCE_ID)) {
             mapLibreMap.addSource(TERRAIN_SOURCE_ID, {
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
+                bounds: TERRAIN_BOUNDS,
                 tileSize: 256,
                 minzoom: 0,
                 maxzoom: 15,
@@ -372,6 +483,7 @@
             mapLibreMap.addSource(HILLSHADE_SOURCE_ID, {
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
+                bounds: TERRAIN_BOUNDS,
                 tileSize: 256,
                 minzoom: 0,
                 maxzoom: 15,
@@ -497,7 +609,7 @@
         window.requestAnimationFrame(() => window.requestAnimationFrame(attempt));
     }
 
-    function routeGradientAt(progress) {
+    function routeGradientAt(progress, beamColor = activeRouteStyle.beamColor) {
         const center = Math.max(0.055, Math.min(0.945, progress));
         const start = Math.max(0.001, center - 0.042);
         const end = Math.min(0.999, center + 0.042);
@@ -505,7 +617,7 @@
             "interpolate", ["linear"], ["line-progress"],
             0, "rgba(255,255,255,0)",
             start, "rgba(255,255,255,0)",
-            center, "rgba(255,255,255,0.98)",
+            center, beamColor,
             end, "rgba(255,255,255,0)",
             1, "rgba(255,255,255,0)"
         ];
@@ -562,7 +674,7 @@
                         "visibility": "visible"
                     },
                     paint: {
-                        "line-color": "#FF9900",
+                        "line-color": activeRouteStyle.color,
                         "line-width": ["interpolate", ["linear"], ["zoom"], 13, 4.2, 17, 6.4, 19, 7.2],
                         "line-opacity": 1,
                         "line-blur": 0.18
@@ -587,6 +699,10 @@
                     }
                 });
             }
+            // Existing layers can survive while the style is reused; always apply
+            // the current planner.js route color so changing ROUTE_COLOR takes effect.
+            mapLibreMap.setPaintProperty(ROUTE_BASE_LAYER_ID, "line-color", activeRouteStyle.color);
+            mapLibreMap.setPaintProperty(ROUTE_BEAM_LAYER_ID, "line-gradient", routeGradientAt(0.18));
             return true;
         } catch (error) {
             console.warn("[Fushimi Map] Native terrain route layers could not be created:", error);
@@ -608,9 +724,19 @@
         return coordinates.length >= 2 ? coordinates : [];
     }
 
-    function setRouteCoordinates(latLngs) {
+    function setRouteCoordinates(latLngs, style = {}) {
         const coordinates = normalizeRouteCoordinates(latLngs);
         if (coordinates.length < 2) return false;
+        const requestedColor = String(style.color || "#FF9900").trim();
+        const requestedBeamColor = String(style.beamColor || "#FFFFFF").trim();
+        const isValidColor = (value) => {
+            try { return !!(window.CSS && window.CSS.supports && window.CSS.supports("color", value)); }
+            catch (_) { return false; }
+        };
+        activeRouteStyle = {
+            color: isValidColor(requestedColor) ? requestedColor : "#FF9900",
+            beamColor: isValidColor(requestedBeamColor) ? requestedBeamColor : "#FFFFFF"
+        };
         activeRouteGeoJSON = {
             type: "FeatureCollection",
             features: [{
@@ -631,7 +757,7 @@
             if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
                 routeBeamFrame = window.requestAnimationFrame(paintRouteBeam);
             } else {
-                mapLibreMap.setPaintProperty(ROUTE_BEAM_LAYER_ID, "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, "rgba(255,255,255,.75)", 1, "rgba(255,255,255,.75)"]);
+                mapLibreMap.setPaintProperty(ROUTE_BEAM_LAYER_ID, "line-gradient", ["interpolate", ["linear"], ["line-progress"], 0, activeRouteStyle.beamColor, 1, activeRouteStyle.beamColor]);
             }
             return true;
         } catch (error) {
@@ -643,6 +769,7 @@
     function clearRouteCoordinates() {
         stopRouteBeamAnimation();
         activeRouteGeoJSON = null;
+        activeRouteStyle = { color: "#FF9900", beamColor: "#FFFFFF" };
         if (!mapLibreMap || !loaded || !mapLibreMap.isStyleLoaded()) return;
         try {
             const source = mapLibreMap.getSource(ROUTE_SOURCE_ID);
@@ -717,6 +844,8 @@
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
                 maxZoom: 18 - LEAFLET_ZOOM_OFFSET,
+                // 地図タイルの取得・操作範囲も伏見稲荷周辺の約2km枠に限定する。
+                maxBounds: TERRAIN_BOUNDS,
                 pitch: FIXED_PITCH,
                 bearing: 0,
                 minPitch: FIXED_PITCH,
@@ -810,19 +939,60 @@
         const tilePane = leafletMap.getPanes()?.tilePane;
         if (tilePane) tilePane.style.display = "none";
         leafletMap.getContainer().style.background = "transparent";
+        // Disable Leaflet's own marker zoom animation. MapLibre is the only visible
+        // camera and markerProxy overlay is the only visible marker renderer.
+        leafletMap.options.zoomAnimation = false;
+        leafletMap.options.markerZoomAnimation = false;
+        leafletMap.options.fadeAnimation = false;
+        ensureMarkerOverlay();
 
-        // Register only marker layers. Route lines and other Leaflet overlays
-        // are transformed as panes and do not need per-marker DOM positioning.
         markerLayers.clear();
+        markerProxyEntries.forEach((entry) => entry.element?.remove());
+        markerProxyEntries.clear();
         leafletMap.eachLayer((layer) => {
-            if (layer instanceof window.L.Marker) markerLayers.add(layer);
+            if (layer instanceof window.L.Marker) {
+                markerLayers.add(layer);
+                layer.on("move", scheduleOverlayProjection);
+                concealLeafletMarkerElement(layer._icon);
+                concealLeafletMarkerElement(layer._shadow);
+            }
         });
         leafletMap.on("layeradd", (event) => {
-            if (event.layer instanceof window.L.Marker) markerLayers.add(event.layer);
+            if (event.layer instanceof window.L.Marker) {
+                markerLayers.add(event.layer);
+                event.layer.on("move", scheduleOverlayProjection);
+                concealLeafletMarkerElement(event.layer._icon);
+                concealLeafletMarkerElement(event.layer._shadow);
+                scheduleOverlayProjection();
+            }
         });
         leafletMap.on("layerremove", (event) => {
-            if (event.layer instanceof window.L.Marker) markerLayers.delete(event.layer);
+            if (event.layer instanceof window.L.Marker) {
+                markerLayers.delete(event.layer);
+                event.layer.off("move", scheduleOverlayProjection);
+                removeMarkerProxy(event.layer);
+            }
         });
+
+        // setIcon() replaces a marker DOM node without firing layeradd. Watch only
+        // marker panes so the isolated proxy is rebuilt immediately after a swap.
+        if (markerPaneObserver) markerPaneObserver.disconnect();
+        if (typeof MutationObserver !== "undefined") {
+            markerPaneObserver = new MutationObserver((records) => {
+                records.forEach((record) => {
+                    record.addedNodes.forEach((node) => {
+                        if (node && node.nodeType === 1 && node.classList?.contains("leaflet-marker-icon")) {
+                            concealLeafletMarkerElement(node);
+                        }
+                    });
+                });
+                scheduleOverlayProjection();
+            });
+            ["markerPane", "plannerNumberPane", "plannerCurrentPane"].forEach((name) => {
+                const pane = leafletMap.getPane(name);
+                if (pane) markerPaneObserver.observe(pane, { childList: true });
+            });
+        }
 
         function closeEnough(a, b) {
             return Math.abs(a - b) < 0.000001;

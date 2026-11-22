@@ -6867,6 +6867,13 @@ body.planner-page .liquid-cursor {
 /* Pass background gestures through to MapLibre; pins remain interactive. */
 #map.maplibre-active .leaflet-map-pane { z-index: 400 !important; pointer-events: none !important; }
 #map.maplibre-active .leaflet-marker-icon { pointer-events: auto !important; }
+/* Prevent original Leaflet nodes from painting underneath the dedicated proxy pins. */
+#map.maplibre-active .leaflet-pane .leaflet-marker-icon,
+#map.maplibre-active .leaflet-pane .leaflet-marker-shadow {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
 #map.maplibre-active .leaflet-marker-shadow,
 #map.maplibre-active .leaflet-interactive { pointer-events: none !important; }
 #map.maplibre-active .leaflet-popup-pane,
@@ -7023,4 +7030,34 @@ body.planner-page .liquid-cursor {
     box-shadow: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+}
+
+
+/* ============================================================
+   V184 — isolated marker renderer
+   The original Leaflet marker nodes are hidden; visible pins are single
+   non-composited proxies positioned from MapLibre's current camera.
+============================================================ */
+.fushimi-marker-overlay {
+  position:absolute !important;
+  inset:0 !important;
+  z-index:680 !important;
+  overflow:visible !important;
+  pointer-events:none !important;
+  transform:none !important;
+  contain:layout style;
+}
+.fushimi-marker-overlay .fushimi-marker-proxy {
+  position:absolute !important;
+  pointer-events:auto !important;
+  transition:none !important;
+  animation:none !important;
+  will-change:auto !important;
+  transform:none !important;
+  -webkit-transform:none !important;
+  backface-visibility:visible !important;
+  -webkit-backface-visibility:visible !important;
+}
+.fushimi-marker-overlay .fushimi-marker-proxy[aria-hidden="true"] {
+  pointer-events:none !important;
 }

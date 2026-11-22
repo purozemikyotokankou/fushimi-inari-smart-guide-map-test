@@ -1,11 +1,11 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ============================================================
-    // BUILD MARKER — V182
+    // BUILD MARKER — V184
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V182-MAPLIBRE-TERRAIN-ROUTE";
-    console.log("[Fushimi Inari Smart Guide] planner.js V182-MAPLIBRE-TERRAIN-ROUTE loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V184-ISOLATED-MARKERS-ROUTE-COLOR";
+    console.log("[Fushimi Inari Smart Guide] planner.js V184-ISOLATED-MARKERS-ROUTE-COLOR loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
@@ -7966,7 +7966,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const nativeTerrainRouteVisible = !!(
             window.FushimiMapEngine &&
             typeof window.FushimiMapEngine.setRouteCoordinates === "function" &&
-            window.FushimiMapEngine.setRouteCoordinates(completeJourneyPath)
+            window.FushimiMapEngine.setRouteCoordinates(completeJourneyPath, {
+                color: ROUTE_COLOR,
+                beamColor: "#FFFFFF"
+            })
         );
         const routePane = map.getPane("plannerRoutePane");
         if (routePane) routePane.style.visibility = nativeTerrainRouteVisible ? "hidden" : "visible";
