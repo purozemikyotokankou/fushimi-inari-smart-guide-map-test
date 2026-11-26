@@ -1,1 +1,1099 @@
-[{"id":1,"name":"千本鳥居","category":"景観","lat":34.967016,"lng":135.774702,"description":"伏見稲荷を代表する朱色の鳥居が連なる人気スポットです。写真撮影にもおすすめです。","time":"30分","image":"torii.jpg"},{"id":2,"name":"伏見稲荷大社 本殿","category":"神社","lat":34.967112,"lng":135.772725,"description":"伏見稲荷大社の中心となる場所です。参拝の際はまず訪れることをおすすめします。","time":"15分","image":"honden.jpg"},{"id":3,"name":"奥社奉拝所（奥の院）","category":"神社","lat":34.96656052,"lng":135.7756342,"description":"千本鳥居を抜けた先にある重要な参拝場所です。おもかる石でも有名です。","time":"20分","image":"okusha.jpg"},{"id":4,"name":"四ツ辻","category":"景観","lat":34.969046,"lng":135.781564,"description":"京都市街を見渡せる展望スポットです。休憩場所としても利用できます。","time":"30分","image":"yotsutsuji.jpg"},{"id":5,"name":"一ノ峰","category":"神社","lat":34.966973,"lng":135.785501,"description":"稲荷山の頂上にある神聖な場所です。山歩きコースの終点になります。","time":"60分","image":"summit.jpg"},{"id":6,"name":"トイレ","category":"トイレ","lat":34.96716257,"lng":135.77232142,"description":"車いす対応トイレあり","time":"5分","image":"toire.jpg"},{"id":7,"name":"京阪電車伏見稲荷駅","category":"交通","lat":34.9683099,"lng":135.76925579,"description":"京阪電車の駅です。","time":"-","image":"station.jpg"},{"id":8,"name":"JR西日本奈良線稲荷駅","category":"交通","lat":34.96681917,"lng":135.77092063,"description":"JR奈良線の駅です。","time":"-","image":"inari_station.jpg"},{"id":9,"name":"伏見稲荷入口","category":"神社","lat":34.967038,"lng":135.770947,"description":"伏見稲荷大社へ向かう参道入口です。ここから楼門・本殿方面へ進みます。","time":"5分","image":"entrance.jpg"},{"id":10,"name":"Vermillion-cafe","category":"飲食店","lat":34.968415,"lng":135.774154,"description":"伏見稲荷の緑に囲まれたカフェ。コーヒーやブランチ、スイーツを楽しめます。","time":"5分","image":"Vermillion.jpg","url":"https://www.vermillioncafe.com/"},{"id":11,"name":"ちいかわ本舗","category":"飲食店","lat":34.968005,"lng":135.771089,"description":"「もぐもぐ（食べる）」と「和」をテーマにした、人気キャラクター「ちいかわ」の常設オフィシャルグッズショップ","time":"5分","image":"chiikawa.jpg"},{"id":12,"name":"eight","category":"飲食店","lat":34.968508,"lng":135.769422,"description":"「eight（エイト）」は、伏見の名水と高加水・低温長時間発酵にこだわり、ハード系からスイーツ系まで毎日約50種類の焼き立てパンを届ける、京都・伏見稲荷の路地裏にある大人気ベーカリーです。","time":"5分","image":""},{"id":13,"name":"トイレ②","category":"トイレ","lat":34.96746464968559,"lng":135.77312967670164,"description":"伏見稲荷周辺のトイレです。","time":"5分","image":"toire2.jpg"},{"id":14,"name":"トイレ③","category":"トイレ","lat":34.96794265,"lng":135.77641661,"description":"伏見稲荷のお山側にあるトイレです。","time":"5分","image":"toire3.jpg"},{"id":15,"name":"京阪電車龍谷大前深草駅","category":"交通","lat":34.96455907,"lng":135.77032775,"description":"京阪電車の駅です。","time":"-","image":""},{"id":16,"name":"二ノ峰","category":"神社","lat":34.96712667,"lng":135.78413039,"description":"稲荷山の三つの峰の一つで、山頂付近にお社がある参拝スポットです。","time":"-","image":""},{"id":17,"name":"三ノ峰","category":"神社","lat":34.96779926,"lng":135.78230113,"description":"商売繁盛や五穀豊穣を願い、古くから多くの人々に信仰されてきた場所です。","time":"-","image":""},{"id":18,"name":"御劔社","category":"神社","lat":34.96874,"lng":135.78587383,"description":"ものづくりや仕事の成功を願う人々から、古くから信仰されてきた場所です。","time":"-","image":""},{"id":19,"name":"おせき大神","category":"神社","lat":34.96878835,"lng":135.78529984,"description":"喉に関してご利益がある神様です。","time":"-","image":""},{"id":20,"name":"薬力大神","category":"神社","lat":34.96900375,"lng":135.78504235,"description":"健康長寿や病気の回復、家族の健康を願う人々が訪れる、健康にまつわる信仰で知られる神社です。","time":"-","image":""},{"id":21,"name":"荒木神社","category":"神社","lat":34.96971318,"lng":135.77582895,"description":"縁結びや恋愛成就のほか、仕事や人間関係など、さまざまな良いご縁を願う人々が訪れる神社です。","time":"-","image":"arakijinja.jpg","url":"https://arakijinja.jp/"},{"id":22,"name":"荒神峰見晴台","category":"神社","lat":34.97000077,"lng":135.78135032,"description":"稲荷山の景色を一望できる見晴らしスポットです","time":"-","image":"kojinmineviewingpoint.jpg"},{"id":23,"name":"大栄商店","category":"飲食店","lat":34.96770969427922,"lng":135.77087623469953,"description":"伏見の日本酒や京都名産品、乾物などを扱うお土産・酒類販売店です。","time":"-","image":"daieishoten.jpg"}]
+[
+  {
+    "id": 1,
+    "name": "千本鳥居",
+    "category": "景観",
+    "lat": 34.967016,
+    "lng": 135.774702,
+    "description": "伏見稲荷を代表する朱色の鳥居が連なる人気スポットです。写真撮影にもおすすめです。",
+    "time": "30分",
+    "image": "torii.jpg",
+    "i18n": {
+      "en": {
+        "name": "Senbon Torii",
+        "category": "Scenic spot",
+        "description": "A popular spot featuring rows of vermilion torii gates, one of Fushimi Inari's most iconic sights. It is also a great place for photography.",
+        "time": "30 min"
+      },
+      "zh-CN": {
+        "name": "千本鸟居",
+        "category": "景观",
+        "description": "这里排列着朱红色鸟居，是伏见稻荷最具代表性的景点之一，也非常适合拍照。",
+        "time": "30分钟"
+      },
+      "zh-TW": {
+        "name": "千本鳥居",
+        "category": "景觀",
+        "description": "這裡排列著朱紅色鳥居，是伏見稻荷最具代表性的景點之一，也很適合拍照。",
+        "time": "30分鐘"
+      },
+      "ko": {
+        "name": "센본 도리이",
+        "category": "경관",
+        "description": "주홍색 도리이가 줄지어 있는 곳으로, 후시미 이나리의 대표적인 명소입니다. 사진 촬영 장소로도 추천합니다.",
+        "time": "30분"
+      },
+      "zh": {
+        "name": "千本鸟居",
+        "category": "景观",
+        "description": "这里排列着朱红色鸟居，是伏见稻荷最具代表性的景点之一，也非常适合拍照。",
+        "time": "30分钟"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "name": "伏見稲荷大社 本殿",
+    "category": "神社",
+    "lat": 34.967112,
+    "lng": 135.772725,
+    "description": "伏見稲荷大社の中心となる場所です。参拝の際はまず訪れることをおすすめします。",
+    "time": "15分",
+    "image": "honden.jpg",
+    "i18n": {
+      "en": {
+        "name": "Fushimi Inari Taisha Main Shrine",
+        "category": "Shrine",
+        "description": "The central place of worship at Fushimi Inari Taisha. It is recommended to visit here first when paying your respects.",
+        "time": "15 min"
+      },
+      "zh-CN": {
+        "name": "伏见稻荷大社本殿",
+        "category": "神社",
+        "description": "这里是伏见稻荷大社的中心参拜场所。建议参拜时先到这里。",
+        "time": "15分钟"
+      },
+      "zh-TW": {
+        "name": "伏見稻荷大社本殿",
+        "category": "神社",
+        "description": "這裡是伏見稻荷大社的中心參拜場所。建議參拜時先到這裡。",
+        "time": "15分鐘"
+      },
+      "ko": {
+        "name": "후시미 이나리 다이샤 본전",
+        "category": "신사",
+        "description": "후시미 이나리 다이샤의 중심이 되는 참배 장소입니다. 참배를 시작할 때 먼저 방문하는 것을 추천합니다.",
+        "time": "15분"
+      },
+      "zh": {
+        "name": "伏见稻荷大社本殿",
+        "category": "神社",
+        "description": "这里是伏见稻荷大社的中心参拜场所。建议参拜时先到这里。",
+        "time": "15分钟"
+      }
+    }
+  },
+  {
+    "id": 3,
+    "name": "奥社奉拝所（奥の院）",
+    "category": "神社",
+    "lat": 34.96656052,
+    "lng": 135.7756342,
+    "description": "千本鳥居を抜けた先にある重要な参拝場所です。おもかる石でも有名です。",
+    "time": "20分",
+    "image": "okusha.jpg",
+    "i18n": {
+      "en": {
+        "name": "Okusha Hōhaisho (Inner Shrine)",
+        "category": "Shrine",
+        "description": "An important place of worship beyond the Senbon Torii. It is also famous for the Omokaru Stone.",
+        "time": "20 min"
+      },
+      "zh-CN": {
+        "name": "奥社奉拜所（奥之院）",
+        "category": "神社",
+        "description": "穿过千本鸟居后即可到达的重要参拜场所，也以“轻重石”闻名。",
+        "time": "20分钟"
+      },
+      "zh-TW": {
+        "name": "奧社奉拜所（奧之院）",
+        "category": "神社",
+        "description": "穿過千本鳥居後即可到達的重要參拜場所，也以「おもかる石」聞名。",
+        "time": "20分鐘"
+      },
+      "ko": {
+        "name": "오쿠샤 호하이쇼(오쿠노인)",
+        "category": "신사",
+        "description": "센본 도리이를 지나면 나오는 중요한 참배 장소입니다. 오모카루이시(소원을 빌며 들어 보는 돌)로도 유명합니다.",
+        "time": "20분"
+      },
+      "zh": {
+        "name": "奥社奉拜所（奥之院）",
+        "category": "神社",
+        "description": "穿过千本鸟居后即可到达的重要参拜场所，也以“轻重石”闻名。",
+        "time": "20分钟"
+      }
+    }
+  },
+  {
+    "id": 4,
+    "name": "四ツ辻",
+    "category": "景観",
+    "lat": 34.969046,
+    "lng": 135.781564,
+    "description": "京都市街を見渡せる展望スポットです。休憩場所としても利用できます。",
+    "time": "30分",
+    "image": "yotsutsuji.jpg",
+    "i18n": {
+      "en": {
+        "name": "Yotsutsuji Crossing",
+        "category": "Scenic spot",
+        "description": "A viewpoint overlooking Kyoto city. It is also a good place to take a break.",
+        "time": "30 min"
+      },
+      "zh-CN": {
+        "name": "四叉路口",
+        "category": "景观",
+        "description": "这里可以眺望京都市区，也适合稍作休息。",
+        "time": "30分钟"
+      },
+      "zh-TW": {
+        "name": "四つ辻",
+        "category": "景觀",
+        "description": "這裡可以眺望京都市區，也適合稍作休息。",
+        "time": "30分鐘"
+      },
+      "ko": {
+        "name": "요쓰쓰지",
+        "category": "경관",
+        "description": "교토 시내를 한눈에 내려다볼 수 있는 전망 명소입니다. 잠시 쉬어 가기에도 좋습니다.",
+        "time": "30분"
+      },
+      "zh": {
+        "name": "四叉路口",
+        "category": "景观",
+        "description": "这里可以眺望京都市区，也适合稍作休息。",
+        "time": "30分钟"
+      }
+    }
+  },
+  {
+    "id": 5,
+    "name": "一ノ峰",
+    "category": "神社",
+    "lat": 34.966973,
+    "lng": 135.785501,
+    "description": "稲荷山の頂上にある神聖な場所です。山歩きコースの終点になります。",
+    "time": "60分",
+    "image": "summit.jpg",
+    "i18n": {
+      "en": {
+        "name": "Ichinomine (First Peak)",
+        "category": "Shrine",
+        "description": "A sacred site at the summit of Mount Inari. It is the endpoint of the mountain hiking course.",
+        "time": "60 min"
+      },
+      "zh-CN": {
+        "name": "一之峰",
+        "category": "神社",
+        "description": "位于稻荷山山顶的神圣场所，也是登山路线的终点。",
+        "time": "60分钟"
+      },
+      "zh-TW": {
+        "name": "一之峰",
+        "category": "神社",
+        "description": "位於稻荷山山頂的神聖場所，也是登山路線的終點。",
+        "time": "60分鐘"
+      },
+      "ko": {
+        "name": "이치노미네(제1봉)",
+        "category": "신사",
+        "description": "이나리산 정상에 있는 신성한 장소로, 산행 코스의 종착점입니다.",
+        "time": "60분"
+      },
+      "zh": {
+        "name": "一之峰",
+        "category": "神社",
+        "description": "位于稻荷山山顶的神圣场所，也是登山路线的终点。",
+        "time": "60分钟"
+      }
+    }
+  },
+  {
+    "id": 6,
+    "name": "トイレ",
+    "category": "トイレ",
+    "lat": 34.96716257,
+    "lng": 135.77232142,
+    "description": "車いす対応トイレあり",
+    "time": "5分",
+    "image": "toire.jpg",
+    "i18n": {
+      "en": {
+        "name": "Restroom",
+        "category": "Restroom",
+        "description": "An accessible restroom for wheelchair users is available.",
+        "time": "5 min"
+      },
+      "zh-CN": {
+        "name": "洗手间",
+        "category": "洗手间",
+        "description": "设有无障碍洗手间，可供轮椅使用者使用。",
+        "time": "5分钟"
+      },
+      "zh-TW": {
+        "name": "洗手間",
+        "category": "洗手間",
+        "description": "設有無障礙洗手間，可供輪椅使用者使用。",
+        "time": "5分鐘"
+      },
+      "ko": {
+        "name": "화장실",
+        "category": "화장실",
+        "description": "휠체어 이용자를 위한 장애인 화장실이 있습니다.",
+        "time": "5분"
+      },
+      "zh": {
+        "name": "洗手间",
+        "category": "洗手间",
+        "description": "设有无障碍洗手间，可供轮椅使用者使用。",
+        "time": "5分钟"
+      }
+    }
+  },
+  {
+    "id": 7,
+    "name": "京阪電車伏見稲荷駅",
+    "category": "交通",
+    "lat": 34.9683099,
+    "lng": 135.76925579,
+    "description": "京阪電車の駅です。",
+    "time": "-",
+    "image": "station.jpg",
+    "i18n": {
+      "en": {
+        "name": "Keihan Fushimi-Inari Station",
+        "category": "Transport",
+        "description": "A station on the Keihan Railway.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "京阪电车伏见稻荷站",
+        "category": "交通",
+        "description": "京阪电车的车站。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "京阪電車伏見稻荷站",
+        "category": "交通",
+        "description": "京阪電車的車站。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "게이한 전철 후시미이나리역",
+        "category": "교통",
+        "description": "게이한 전철의 역입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "京阪电车伏见稻荷站",
+        "category": "交通",
+        "description": "京阪电车的车站。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 8,
+    "name": "JR西日本奈良線稲荷駅",
+    "category": "交通",
+    "lat": 34.96681917,
+    "lng": 135.77092063,
+    "description": "JR奈良線の駅です。",
+    "time": "-",
+    "image": "inari_station.jpg",
+    "i18n": {
+      "en": {
+        "name": "JR Inari Station (Nara Line)",
+        "category": "Transport",
+        "description": "A station on the JR Nara Line.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "JR奈良线稻荷站",
+        "category": "交通",
+        "description": "JR奈良线的车站。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "JR奈良線稻荷站",
+        "category": "交通",
+        "description": "JR奈良線的車站。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "JR 나라선 이나리역",
+        "category": "교통",
+        "description": "JR 나라선의 역입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "JR奈良线稻荷站",
+        "category": "交通",
+        "description": "JR奈良线的车站。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 9,
+    "name": "伏見稲荷入口",
+    "category": "神社",
+    "lat": 34.967038,
+    "lng": 135.770947,
+    "description": "伏見稲荷大社へ向かう参道入口です。ここから楼門・本殿方面へ進みます。",
+    "time": "5分",
+    "image": "entrance.jpg",
+    "i18n": {
+      "en": {
+        "name": "Fushimi Inari Entrance",
+        "category": "Shrine",
+        "description": "The entrance to the approach leading to Fushimi Inari Taisha. From here, continue toward the Romon Gate and the main shrine.",
+        "time": "5 min"
+      },
+      "zh-CN": {
+        "name": "伏见稻荷入口",
+        "category": "神社",
+        "description": "通往伏见稻荷大社参道的入口。从这里可以前往楼门和本殿方向。",
+        "time": "5分钟"
+      },
+      "zh-TW": {
+        "name": "伏見稻荷入口",
+        "category": "神社",
+        "description": "通往伏見稻荷大社參道的入口。從這裡可以前往樓門和本殿方向。",
+        "time": "5分鐘"
+      },
+      "ko": {
+        "name": "후시미 이나리 입구",
+        "category": "신사",
+        "description": "후시미 이나리 다이샤로 향하는 참배길의 입구입니다. 이곳에서 누문과 본전 방향으로 이동합니다.",
+        "time": "5분"
+      },
+      "zh": {
+        "name": "伏见稻荷入口",
+        "category": "神社",
+        "description": "通往伏见稻荷大社参道的入口。从这里可以前往楼门和本殿方向。",
+        "time": "5分钟"
+      }
+    }
+  },
+  {
+    "id": 13,
+    "name": "トイレ②",
+    "category": "トイレ",
+    "lat": 34.96746464968559,
+    "lng": 135.77312967670164,
+    "description": "伏見稲荷周辺のトイレです。",
+    "time": "5分",
+    "image": "toire2.jpg",
+    "i18n": {
+      "en": {
+        "name": "Restroom 2",
+        "category": "Restroom",
+        "description": "A restroom in the Fushimi Inari area.",
+        "time": "5 min"
+      },
+      "zh-CN": {
+        "name": "洗手间②",
+        "category": "洗手间",
+        "description": "伏见稻荷周边的洗手间。",
+        "time": "5分钟"
+      },
+      "zh-TW": {
+        "name": "洗手間②",
+        "category": "洗手間",
+        "description": "伏見稻荷周邊的洗手間。",
+        "time": "5分鐘"
+      },
+      "ko": {
+        "name": "화장실 ②",
+        "category": "화장실",
+        "description": "후시미 이나리 주변에 있는 화장실입니다.",
+        "time": "5분"
+      },
+      "zh": {
+        "name": "洗手间②",
+        "category": "洗手间",
+        "description": "伏见稻荷周边的洗手间。",
+        "time": "5分钟"
+      }
+    }
+  },
+  {
+    "id": 14,
+    "name": "トイレ③",
+    "category": "トイレ",
+    "lat": 34.96794265,
+    "lng": 135.77641661,
+    "description": "伏見稲荷のお山側にあるトイレです。",
+    "time": "5分",
+    "image": "toire3.jpg",
+    "i18n": {
+      "en": {
+        "name": "Restroom 3",
+        "category": "Restroom",
+        "description": "A restroom located on the mountain side of Fushimi Inari.",
+        "time": "5 min"
+      },
+      "zh-CN": {
+        "name": "洗手间③",
+        "category": "洗手间",
+        "description": "位于伏见稻荷山侧的洗手间。",
+        "time": "5分钟"
+      },
+      "zh-TW": {
+        "name": "洗手間③",
+        "category": "洗手間",
+        "description": "位於伏見稻荷山側的洗手間。",
+        "time": "5分鐘"
+      },
+      "ko": {
+        "name": "화장실 ③",
+        "category": "화장실",
+        "description": "후시미 이나리 산 쪽에 있는 화장실입니다.",
+        "time": "5분"
+      },
+      "zh": {
+        "name": "洗手间③",
+        "category": "洗手间",
+        "description": "位于伏见稻荷山侧的洗手间。",
+        "time": "5分钟"
+      }
+    }
+  },
+  {
+    "id": 15,
+    "name": "京阪電車龍谷大前深草駅",
+    "category": "交通",
+    "lat": 34.96455907,
+    "lng": 135.77032775,
+    "description": "京阪電車の駅です。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Keihan Ryukoku-daimae-Fukakusa Station",
+        "category": "Transport",
+        "description": "A station on the Keihan Railway.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "京阪电车龙谷大前深草站",
+        "category": "交通",
+        "description": "京阪电车的车站。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "京阪電車龍谷大前深草站",
+        "category": "交通",
+        "description": "京阪電車的車站。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "게이한 전철 류코쿠다이마에후카쿠사역",
+        "category": "교통",
+        "description": "게이한 전철의 역입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "京阪电车龙谷大前深草站",
+        "category": "交通",
+        "description": "京阪电车的车站。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 16,
+    "name": "二ノ峰",
+    "category": "神社",
+    "lat": 34.96712667,
+    "lng": 135.78413039,
+    "description": "稲荷山の三つの峰の一つで、山頂付近にお社がある参拝スポットです。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Ninomine (Second Peak)",
+        "category": "Shrine",
+        "description": "One of the three peaks of Mount Inari. A place of worship with a small shrine near the summit.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "二之峰",
+        "category": "神社",
+        "description": "稻荷山三座山峰之一，山顶附近设有神社，是一处参拜景点。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "二之峰",
+        "category": "神社",
+        "description": "稻荷山三座山峰之一，山頂附近設有神社，是一處參拜景點。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "니노미네(제2봉)",
+        "category": "신사",
+        "description": "이나리산의 세 봉우리 중 하나로, 정상 부근에 사당이 있는 참배 명소입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "二之峰",
+        "category": "神社",
+        "description": "稻荷山三座山峰之一，山顶附近设有神社，是一处参拜景点。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 17,
+    "name": "三ノ峰",
+    "category": "神社",
+    "lat": 34.96779926,
+    "lng": 135.78230113,
+    "description": "商売繁盛や五穀豊穣を願い、古くから多くの人々に信仰されてきた場所です。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Sannomine (Third Peak)",
+        "category": "Shrine",
+        "description": "A place that has long been worshipped by visitors praying for prosperous business and abundant harvests.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "三之峰",
+        "category": "神社",
+        "description": "这里长期受到人们的信仰，许多人前来祈求生意兴隆、五谷丰登。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "三之峰",
+        "category": "神社",
+        "description": "這裡長期受到人們的信仰，許多人前來祈求生意興隆、五穀豐收。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "산노미네(제3봉)",
+        "category": "신사",
+        "description": "장사 번창과 풍년을 기원하는 사람들이 예로부터 참배해 온 장소입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "三之峰",
+        "category": "神社",
+        "description": "这里长期受到人们的信仰，许多人前来祈求生意兴隆、五谷丰登。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 18,
+    "name": "御劔社",
+    "category": "神社",
+    "lat": 34.96874,
+    "lng": 135.78587383,
+    "description": "ものづくりや仕事の成功を願う人々から、古くから信仰されてきた場所です。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Mitsurugi Shrine",
+        "category": "Shrine",
+        "description": "A shrine long revered by people praying for success in craftsmanship and work.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "御剑社",
+        "category": "神社",
+        "description": "这里自古以来受到人们的信仰，许多人前来祈求技艺精进与事业成功。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "御劍社",
+        "category": "神社",
+        "description": "這裡自古以來受到人們的信仰，許多人前來祈求技藝精進與工作順利。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "미쓰루기샤",
+        "category": "신사",
+        "description": "예로부터 기술과 일에서의 성공을 기원하는 사람들이 신앙해 온 신사입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "御剑社",
+        "category": "神社",
+        "description": "这里自古以来受到人们的信仰，许多人前来祈求技艺精进与事业成功。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 19,
+    "name": "おせき大神",
+    "category": "神社",
+    "lat": 34.96878835,
+    "lng": 135.78529984,
+    "description": "喉に関してご利益がある神様です。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Oseki Ōkami",
+        "category": "Shrine",
+        "description": "A deity believed to bring blessings related to the throat.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "御咳大神",
+        "category": "神社",
+        "description": "据说这位神明能赐予与咽喉健康相关的庇佑。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "御咳大神",
+        "category": "神社",
+        "description": "據說這位神明能賜予與喉嚨健康相關的庇佑。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "오세키 오카미",
+        "category": "신사",
+        "description": "목 건강과 관련된 은혜를 준다고 알려진 신입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "御咳大神",
+        "category": "神社",
+        "description": "据说这位神明能赐予与咽喉健康相关的庇佑。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 20,
+    "name": "薬力大神",
+    "category": "神社",
+    "lat": 34.96900375,
+    "lng": 135.78504235,
+    "description": "健康長寿や病気の回復、家族の健康を願う人々が訪れる、健康にまつわる信仰で知られる神社です。",
+    "time": "-",
+    "image": "",
+    "i18n": {
+      "en": {
+        "name": "Yakuryoku Ōkami",
+        "category": "Shrine",
+        "description": "A shrine known for prayers for longevity, recovery from illness, and the health of one's family.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "药力大神",
+        "category": "神社",
+        "description": "这里以祈求健康长寿、疾病康复和家人健康而闻名。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "藥力大神",
+        "category": "神社",
+        "description": "這裡以祈求健康長壽、疾病康復和家人健康而聞名。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "야쿠료쿠 오카미",
+        "category": "신사",
+        "description": "건강 장수와 병의 회복, 가족의 건강을 기원하는 곳으로 알려져 있습니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "药力大神",
+        "category": "神社",
+        "description": "这里以祈求健康长寿、疾病康复和家人健康而闻名。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 21,
+    "name": "荒木神社",
+    "category": "神社",
+    "lat": 34.96971318,
+    "lng": 135.77582895,
+    "description": "縁結びや恋愛成就のほか、仕事や人間関係など、さまざまな良いご縁を願う人々が訪れる神社です。",
+    "time": "-",
+    "image": "arakijinja.jpg",
+    "url": "https://arakijinja.jp/",
+    "i18n": {
+      "en": {
+        "name": "Araki Shrine",
+        "category": "Shrine",
+        "description": "A shrine visited by people praying for good relationships and romantic fulfillment, as well as positive connections in work and daily life.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "荒木神社",
+        "category": "神社",
+        "description": "许多人前来祈求良缘、恋爱顺利，以及工作和人际关系中的美好缘分。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "荒木神社",
+        "category": "神社",
+        "description": "許多人前來祈求良緣、戀愛順利，以及工作和人際關係中的美好緣分。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "아라키 신사",
+        "category": "신사",
+        "description": "좋은 인연과 사랑의 성취뿐 아니라 일과 인간관계에서의 좋은 만남을 기원하는 사람들이 찾는 신사입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "荒木神社",
+        "category": "神社",
+        "description": "许多人前来祈求良缘、恋爱顺利，以及工作和人际关系中的美好缘分。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 22,
+    "name": "荒神峰見晴台",
+    "category": "神社",
+    "lat": 34.97000077,
+    "lng": 135.78135032,
+    "description": "稲荷山の景色を一望できる見晴らしスポットです",
+    "time": "-",
+    "image": "kojinmineviewingpoint.jpg",
+    "i18n": {
+      "en": {
+        "name": "Kojinmine Viewpoint",
+        "category": "Scenic spot",
+        "description": "A viewpoint offering a wide view of the scenery of Mount Inari.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "荒神峰观景台",
+        "category": "景观",
+        "description": "在这里可以一览稻荷山的景色。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "荒神峰觀景台",
+        "category": "景觀",
+        "description": "在這裡可以一覽稻荷山的景色。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "고진미네 전망대",
+        "category": "경관",
+        "description": "이나리산의 풍경을 한눈에 감상할 수 있는 전망 명소입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "荒神峰观景台",
+        "category": "景观",
+        "description": "在这里可以一览稻荷山的景色。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 23,
+    "name": "大栄商店",
+    "category": "買う",
+    "lat": 34.96770969,
+    "lng": 135.77087623,
+    "description": "伏見稲荷駅すぐの酒類・お土産店。伏見の地酒や京都名産品、乾物などの食品が揃います。",
+    "time": "-",
+    "image": "daieishoten.jpg",
+    "i18n": {
+      "en": {
+        "name": "Daiei Shoten",
+        "category": "Shopping",
+        "description": "A liquor and souvenir shop near Fushimi-Inari Station. It offers local Fushimi sake, Kyoto specialties, dried foods, and more.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "大荣商店",
+        "category": "购物",
+        "description": "位于伏见稻荷站附近的酒类与伴手礼商店。店内有伏见当地清酒、京都特产、干货等食品。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "大榮商店",
+        "category": "購物",
+        "description": "位於伏見稻荷站附近的酒類與伴手禮商店。店內有伏見當地清酒、京都特產、乾貨等食品。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "다이에이 상점",
+        "category": "쇼핑",
+        "description": "후시미이나리역 바로 근처에 있는 주류 및 기념품 가게입니다. 후시미의 지역 술과 교토 특산품, 건어물 등 다양한 식품을 판매합니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "大荣商店",
+        "category": "购物",
+        "description": "位于伏见稻荷站附近的酒类与伴手礼商店。店内有伏见当地清酒、京都特产、干货等食品。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 24,
+    "name": "おうすソフトの店 いなりのイーナ",
+    "category": "飲食店",
+    "lat": 34.967336212619685,
+    "lng": 135.77105429977084,
+    "description": "濃厚な抹茶ソフトが人気です",
+    "time": "-",
+    "image": "oususofutonomiseinarinoina.jpg",
+    "i18n": {
+      "en": {
+        "name": "Inari no Iina Matcha Soft-Serve Shop",
+        "category": "Restaurant",
+        "description": "A shop popular for its rich matcha soft-serve ice cream.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "稻荷的伊娜抹茶冰淇淋店",
+        "category": "餐饮店",
+        "description": "以浓郁抹茶口味的软冰淇淋而受欢迎。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "稻荷的伊娜抹茶霜淇淋店",
+        "category": "餐飲店",
+        "description": "以濃郁抹茶口味的霜淇淋而受歡迎。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "이나리노 이나 말차 소프트 아이스크림",
+        "category": "음식점",
+        "description": "진한 말차 소프트 아이스크림으로 인기가 많은 가게입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "稻荷的伊娜抹茶冰淇淋店",
+        "category": "餐饮店",
+        "description": "以浓郁抹茶口味的软冰淇淋而受欢迎。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 25,
+    "name": "祢ざめ家",
+    "category": "飲食店",
+    "lat": 34.96785540432588,
+    "lng": 135.77081295528865,
+    "description": "麻の実が入ったプチプチ触感の名物稲荷寿司が有名です",
+    "time": "-",
+    "image": "nezameya.jpg",
+    "url": "https://nezameya.com/",
+    "i18n": {
+      "en": {
+        "name": "Nezameya",
+        "category": "Restaurant",
+        "description": "Famous for its signature inari sushi, which has a pleasantly crunchy texture from hemp seeds.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "祢ざめ家（Nezameya）",
+        "category": "餐饮店",
+        "description": "以招牌稻荷寿司闻名，寿司中加入了麻籽，口感独特。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "祢ざめ家（Nezameya）",
+        "category": "餐飲店",
+        "description": "以招牌稻荷壽司聞名，壽司中加入了麻籽，口感獨特。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "네자메야",
+        "category": "음식점",
+        "description": "대마 씨앗이 들어가 톡톡 씹히는 식감이 특징인 명물 이나리 스시로 유명합니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "祢ざめ家（Nezameya）",
+        "category": "餐饮店",
+        "description": "以招牌稻荷寿司闻名，寿司中加入了麻籽，口感独特。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 26,
+    "name": "加美屋 稲荷店",
+    "category": "買う",
+    "lat": 34.966477122003994,
+    "lng": 135.7710744050855,
+    "description": "京都産あぶらとり紙をはじめ、練り香水やハンドクリームなど、お土産にぴったりな和コスメが揃っています。",
+    "time": "-",
+    "image": "kamiyainariten.jpg",
+    "url": "https://kami-ya.jp/",
+    "i18n": {
+      "en": {
+        "name": "Kamiya Inari Shop",
+        "category": "Shopping",
+        "description": "A shop offering Kyoto-made oil-blotting paper, kneaded perfume, hand creams, and other Japanese cosmetics that make great souvenirs.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "加美屋 稻荷店",
+        "category": "购物",
+        "description": "店内有京都产吸油面纸、練香水、护手霜等适合作为伴手礼的日式美妆产品。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "加美屋 稻荷店",
+        "category": "購物",
+        "description": "店內有京都產吸油面紙、練香水、護手霜等適合作為伴手禮的和風美妝產品。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "카미야 이나리점",
+        "category": "쇼핑",
+        "description": "교토산 기름종이를 비롯해 고체 향수와 핸드크림 등 선물용으로 좋은 일본식 화장품을 판매합니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "加美屋 稻荷店",
+        "category": "购物",
+        "description": "店内有京都产吸油面纸、練香水、护手霜等适合作为伴手礼的日式美妆产品。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 27,
+    "name": "Vermillion - cafe",
+    "category": "飲食店",
+    "lat": 34.96842989171823,
+    "lng": 135.77414605809747,
+    "description": "本格的なコーヒーや軽食を提供する緑に囲まれたカフェ。ビーガン向けメニューもある。水辺の景色を楽しめる。",
+    "time": "-",
+    "image": "Vermillion.jpg",
+    "i18n": {
+      "en": {
+        "name": "Vermillion - cafe",
+        "category": "Restaurant",
+        "description": "A café surrounded by greenery, serving specialty coffee and light meals. Vegan-friendly options are available, and visitors can enjoy the waterside scenery.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "Vermillion 咖啡馆",
+        "category": "餐饮店",
+        "description": "这是一家绿意环绕的咖啡馆，提供精品咖啡和简餐，也有适合纯素食者的餐点。可以欣赏水边风景。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "Vermillion 咖啡館",
+        "category": "餐飲店",
+        "description": "這是一家綠意環繞的咖啡館，提供精品咖啡和輕食，也有適合純素食者的餐點。可以欣賞水畔景色。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "버밀리온 카페",
+        "category": "음식점",
+        "description": "초록으로 둘러싸인 카페로, 전문 커피와 간단한 식사를 제공합니다. 비건 메뉴도 있으며 물가 풍경을 즐길 수 있습니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "Vermillion 咖啡馆",
+        "category": "餐饮店",
+        "description": "这是一家绿意环绕的咖啡馆，提供精品咖啡和简餐，也有适合纯素食者的餐点。可以欣赏水边风景。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 28,
+    "name": "ちいかわもぐもぐ本舗 伏見店",
+    "category": "買う",
+    "lat": 34.967978136188485,
+    "lng": 135.77106780053307,
+    "description": "伏見稲荷大社の参道にある『ちいかわ』と「食べる」がテーマの和風ショップです。キツネ姿の限定ぬいぐるみや京都らしいお菓子、フォトスポットが楽しめます。",
+    "time": "-",
+    "image": "chiikawa.jpg",
+    "url": "https://www.chiikawamogumogu.jp/stores/fushimi/",
+    "i18n": {
+      "en": {
+        "name": "Chiikawa Mogumogu Honpo Fushimi Shop",
+        "category": "Shopping",
+        "description": "A Japanese-style shop on the approach to Fushimi Inari Taisha themed around Chiikawa and food. Visitors can enjoy limited-edition fox-costume plush toys, Kyoto-inspired sweets, and photo spots.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "吉伊卡哇Mogumogu本铺 伏见店",
+        "category": "购物",
+        "description": "位于伏见稻荷大社参道上的日式商店，以“吉伊卡哇”和美食为主题。店内有狐狸装限定玩偶、京都风格点心和拍照景点。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "吉伊卡哇Mogumogu本舖 伏見店",
+        "category": "購物",
+        "description": "位於伏見稻荷大社參道上的日式商店，以「吉伊卡哇」和美食為主題。店內有狐狸裝限定玩偶、京都風格點心和拍照景點。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "치이카와 모구모구 혼포 후시미점",
+        "category": "쇼핑",
+        "description": "후시미 이나리 다이샤 참배길에 있는 일본풍 상점으로, 치이카와와 먹거리를 테마로 합니다. 여우 의상을 입은 한정 봉제인형과 교토풍 과자, 포토 스폿을 즐길 수 있습니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "吉伊卡哇Mogumogu本铺 伏见店",
+        "category": "购物",
+        "description": "位于伏见稻荷大社参道上的日式商店，以“吉伊卡哇”和美食为主题。店内有狐狸装限定玩偶、京都风格点心和拍照景点。",
+        "time": "—"
+      }
+    }
+  },
+  {
+    "id": 29,
+    "name": "牛カツ京都勝牛 伏見稲荷大社前店",
+    "category": "飲食店",
+    "lat": 34.96714070316016,
+    "lng": 135.7708382737469,
+    "description": "京都発祥の牛カツ専門店。厳選した牛肉を高温短時間で揚げ、外はサクサク中はミディアムレアの食感を実現。部位別の牛カツ膳や、だし醤油・山椒塩・京カレーつけ汁など多彩な薬味とたれで味わうスタイルが人気です。",
+    "time": "-",
+    "image": "gyuukatu.jpg",
+    "url": "https://gyukatsu-kyotokatsugyu.com/store/fushimiInari-taisha",
+    "i18n": {
+      "en": {
+        "name": "Kyoto Katsugyu Fushimi Inari Taisha-mae",
+        "category": "Restaurant",
+        "description": "A beef cutlet specialty restaurant originating in Kyoto. Its beef cutlets are quickly deep-fried at high temperature for a crisp exterior and a medium interior. Popular options include assorted beef cutlet sets with a variety of seasonings and dipping sauces.",
+        "time": "—"
+      },
+      "zh-CN": {
+        "name": "京都胜牛 伏见稻荷大社前店",
+        "category": "餐饮店",
+        "description": "源自京都的牛排炸牛排专门店。牛肉经过高温快速油炸，外酥内嫩。人气餐点包括不同部位的牛排套餐，并可搭配高汤酱油、山椒盐和京都咖喱蘸酱等调味料。",
+        "time": "—"
+      },
+      "zh-TW": {
+        "name": "京都勝牛 伏見稻荷大社前店",
+        "category": "餐飲店",
+        "description": "源自京都的牛排炸牛排專門店。牛肉經過高溫快速油炸，外酥內嫩。人氣餐點包括不同部位的牛排套餐，並可搭配高湯醬油、山椒鹽和京都咖哩沾醬等調味料。",
+        "time": "—"
+      },
+      "ko": {
+        "name": "교토 가츠규 후시미 이나리 다이샤마에점",
+        "category": "음식점",
+        "description": "교토에서 시작한 규카츠 전문점입니다. 소고기를 고온에서 짧게 튀겨 겉은 바삭하고 속은 미디엄 정도로 익힙니다. 부위별 규카츠 정식과 다시 간장, 산초 소금, 교토 카레 소스 등 다양한 곁들임이 인기입니다.",
+        "time": "—"
+      },
+      "zh": {
+        "name": "京都胜牛 伏见稻荷大社前店",
+        "category": "餐饮店",
+        "description": "源自京都的牛排炸牛排专门店。牛肉经过高温快速油炸，外酥内嫩。人气餐点包括不同部位的牛排套餐，并可搭配高汤酱油、山椒盐和京都咖喱蘸酱等调味料。",
+        "time": "—"
+      }
+    }
+  }
+]
