@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v186 free-pan + torii loading)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v187 TORII LOOP test)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -48,6 +48,7 @@
     let markerPaneObserver = null;
     const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
     let markerProjectionMatrix = null;
+    let statusHideTimer = 0;
 
     // Route geometry is rendered by MapLibre itself so it follows the DEM surface.
     // Leaflet keeps a hidden copy only for its existing bounds / navigation logic.
@@ -75,16 +76,28 @@
     function showStatus(message, canRetry) {
         const node = status();
         if (!node) return;
+        if (statusHideTimer) {
+            window.clearTimeout(statusHideTimer);
+            statusHideTimer = 0;
+        }
         if (statusText()) statusText().textContent = message;
         if (retryButton()) retryButton().hidden = !canRetry;
         node.setAttribute("aria-label", message || "伏見稲荷の地図を読み込んでいます");
+        node.classList.remove("is-leaving");
         node.hidden = false;
         node.classList.toggle("is-error", !!canRetry);
     }
 
     function hideStatus() {
         const node = status();
-        if (node) node.hidden = true;
+        if (!node || node.hidden) return;
+        if (statusHideTimer) window.clearTimeout(statusHideTimer);
+        node.classList.add("is-leaving");
+        statusHideTimer = window.setTimeout(() => {
+            node.hidden = true;
+            node.classList.remove("is-leaving");
+            statusHideTimer = 0;
+        }, 300);
     }
 
     function setMapSurfaceReady(ready) {
@@ -879,7 +892,7 @@
         container.style.inset = "0";
         container.style.width = "100%";
         container.style.height = "100%";
-        container.style.zIndex = "0";
+        container.style.zIndex = "500";
         container.style.overflow = "hidden";
 
         const retry = retryButton();
@@ -930,7 +943,13 @@
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
                 maxZoom: 18 - LEAFLET_ZOOM_OFFSET,
-                // 地図のパン範囲は固定しない。スポット一覧の端から反対側の端まで自由に移動できる。
+                // V188: カメラ移動を制限しない。地形DEMのsource boundsは取得範囲だけを制限し、
+                // 地図のパン範囲には適用しない。nullを明示して古いmaxBounds設定も解除する。
+                maxBounds: null,
+                dragPan: true,
+                scrollZoom: true,
+                doubleClickZoom: true,
+                touchZoomRotate: true,
                 pitch: FIXED_PITCH,
                 bearing: 0,
                 minPitch: FIXED_PITCH,
@@ -938,8 +957,6 @@
                 dragRotate: false,
                 pitchWithRotate: false,
                 touchPitch: false,
-                scrollZoom: true,
-                doubleClickZoom: true,
                 attributionControl: { compact: false },
                 renderWorldCopies: false,
                 cooperativeGestures: false,
@@ -966,6 +983,16 @@
                 showStatus("3D地形を準備しています…", false);
                 add3DBuildings();
                 addMarkerProjectionReferenceLayer();
+                // スタイル再読込後もドラッグ移動・ズームを必ず有効化する。
+                mapLibreMap.setMaxBounds(null);
+                mapLibreMap.dragPan?.enable?.();
+                const activeCanvas = mapLibreMap.getCanvas?.();
+                if (activeCanvas) { activeCanvas.style.pointerEvents = "auto"; activeCanvas.style.touchAction = "none"; }
+                mapLibreMap.scrollZoom?.enable?.();
+                mapLibreMap.doubleClickZoom?.enable?.();
+                mapLibreMap.touchZoomRotate?.enable?.();
+                mapLibreMap.touchZoomRotate?.disableRotation?.();
+                mapLibreMap.touchPitch?.disable?.();
                 enableFixedTerrain();
                 restoreNativeRouteAfterStyleLoad();
                 if (mapLibreMap) mapLibreMap.resize();
@@ -973,6 +1000,12 @@
             }
 
             // 3D角度と北向きを固定。ピンチズーム・ドラッグ移動は引き続き使用可能。
+            mapLibreMap.dragPan?.enable?.();
+            const activeCanvas = mapLibreMap.getCanvas?.();
+            if (activeCanvas) { activeCanvas.style.pointerEvents = "auto"; activeCanvas.style.touchAction = "none"; }
+            mapLibreMap.scrollZoom?.enable?.();
+            mapLibreMap.doubleClickZoom?.enable?.();
+            mapLibreMap.touchZoomRotate?.enable?.();
             mapLibreMap.dragRotate?.disable?.();
             mapLibreMap.touchZoomRotate?.disableRotation?.();
             mapLibreMap.touchPitch?.disable?.();
