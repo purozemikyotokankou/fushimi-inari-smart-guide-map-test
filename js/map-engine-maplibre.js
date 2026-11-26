@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v190 unrestricted map pan)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v191 manual map pan + torii tunnel loading)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -40,6 +40,9 @@
     const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
     let markerProjectionMatrix = null;
     let statusHideTimer = 0;
+    let manualPanInstalled = false;
+    let manualPanGesture = null;
+    let suppressClickUntil = 0;
 
     // Route geometry is rendered by MapLibre itself so it follows the DEM surface.
     // Leaflet keeps a hidden copy only for its existing bounds / navigation logic.
@@ -871,13 +874,112 @@
         }
     }
 
+    // MapLibreの標準ドラッグだけに依存せず、#map全体でドラッグを受ける。
+    // ピン上からドラッグした場合も地図を移動でき、短いタップだけをスポット選択に渡す。
+    function installManualMapPan() {
+        if (manualPanInstalled) return;
+        const root = document.getElementById("map");
+        if (!root || !mapLibreMap) return;
+        manualPanInstalled = true;
+
+        // パン操作はこのハンドラーに一本化し、MapLibre側の二重移動を防ぐ。
+        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
+        root.style.touchAction = "none";
+
+        const markerSelector = ".fushimi-marker-proxy";
+        const ignoredSelector = [
+            "button", "a", "input", "select", "textarea", "[role='button']",
+            ".map-spot-detail", ".planner-spot-panel", ".planner-top-actions",
+            ".map-search-popover", ".leaflet-popup", ".maplibre-status.is-error",
+            ".maplibre-camera-control", ".maplibre-terrain-button"
+        ].join(",");
+
+        root.addEventListener("pointerdown", function (event) {
+            if (!mapLibreMap || !mapLibreMap.isStyleLoaded?.()) return;
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target) return;
+            const startedOnMarker = !!target.closest(markerSelector);
+            if (!startedOnMarker && target.closest(ignoredSelector)) return;
+
+            // 2本指操作はMapLibreのピンチズームに任せる。
+            if (manualPanGesture && event.pointerType === "touch") {
+                manualPanGesture = null;
+                return;
+            }
+            manualPanGesture = {
+                pointerId: event.pointerId,
+                pointerType: event.pointerType,
+                startX: event.clientX,
+                startY: event.clientY,
+                lastX: event.clientX,
+                lastY: event.clientY,
+                dragged: false
+            };
+        }, { capture: true, passive: true });
+
+        window.addEventListener("pointermove", function (event) {
+            const gesture = manualPanGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId || !mapLibreMap) return;
+            const totalX = event.clientX - gesture.startX;
+            const totalY = event.clientY - gesture.startY;
+            if (!gesture.dragged && Math.hypot(totalX, totalY) < 5) return;
+
+            if (!gesture.dragged) {
+                gesture.dragged = true;
+                try { mapLibreMap.stop(); } catch (_) {}
+                document.getElementById("map")?.classList.add("is-camera-moving", "is-manual-map-dragging");
+                notifyUserMapGesture();
+            }
+
+            const dx = event.clientX - gesture.lastX;
+            const dy = event.clientY - gesture.lastY;
+            gesture.lastX = event.clientX;
+            gesture.lastY = event.clientY;
+            if (dx || dy) {
+                try {
+                    // 指・マウスの移動方向へ地図面がついてくるよう、カメラを逆方向へパン。
+                    mapLibreMap.panBy([-dx, -dy], { duration: 0 });
+                } catch (error) {
+                    console.warn("[Fushimi Map] Manual pan fallback failed:", error);
+                }
+            }
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+        }, { capture: true, passive: false });
+
+        const finishGesture = function (event) {
+            const gesture = manualPanGesture;
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            if (gesture.dragged) {
+                // ドラッグ直後に疑似クリックが発生して、誤ってピンを選択するのを防ぐ。
+                suppressClickUntil = performance.now() + 120;
+                const rootNode = document.getElementById("map");
+                rootNode?.classList.remove("is-manual-map-dragging");
+                window.setTimeout(() => rootNode?.classList.remove("is-camera-moving"), 90);
+            }
+            manualPanGesture = null;
+        };
+        window.addEventListener("pointerup", finishGesture, { capture: true, passive: true });
+        window.addEventListener("pointercancel", finishGesture, { capture: true, passive: true });
+
+        root.addEventListener("click", function (event) {
+            if (performance.now() > suppressClickUntil) return;
+            suppressClickUntil = 0;
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+        }, true);
+    }
+
     // MapLibreの地図操作を常時有効にする。
     // 地図の表示範囲を固定せず、パン・ズームはユーザーに任せる。
     // 3Dの初期角度(54度)と北向きは維持する。
     function enableFreeMapMovement() {
         if (!mapLibreMap) return;
         try { mapLibreMap.setMaxBounds(null); } catch (_) {}
-        try { mapLibreMap.dragPan?.enable?.(); } catch (_) {}
+        // ドラッグ移動はinstallManualMapPan()で統一。標準dragPanとの二重移動を防止。
+        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
         try { mapLibreMap.scrollZoom?.enable?.(); } catch (_) {}
         try { mapLibreMap.doubleClickZoom?.enable?.(); } catch (_) {}
         try { mapLibreMap.touchZoomRotate?.enable?.(); } catch (_) {}
@@ -986,6 +1088,7 @@
                 cancelPendingTileRequestsWhileZooming: true
             });
             enableFreeMapMovement();
+            installManualMapPan();
 
             function handleMapStyleReady() {
                 if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
@@ -1188,8 +1291,13 @@
         const canvas = mapLibreMap.getCanvas();
         const width = canvas.clientWidth || canvas.width;
         const height = canvas.clientHeight || canvas.height;
-        const desiredX = Number.isFinite(targetPoint?.x) ? Math.max(0, Math.min(width, targetPoint.x)) : width * 0.5;
-        const desiredY = Number.isFinite(targetPoint?.y) ? Math.max(0, Math.min(height, targetPoint.y)) : height * 0.5;
+        // 選択した駅・スポットが画面端や下部パネルに隠れないよう、中央の安全領域へ寄せる。
+        const desiredX = Number.isFinite(targetPoint?.x)
+            ? Math.max(width * 0.30, Math.min(width * 0.70, targetPoint.x))
+            : width * 0.5;
+        const desiredY = Number.isFinite(targetPoint?.y)
+            ? Math.max(height * 0.24, Math.min(height * 0.60, targetPoint.y))
+            : height * 0.42;
         // A temporary offset places the chosen coordinate in the visible area
         // without changing MapLibre's persistent viewport padding.
         return [desiredX - width * 0.5, desiredY - height * 0.5];

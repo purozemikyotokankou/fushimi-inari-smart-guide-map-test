@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v190 UNBOUNDED MAP PAN) */
+/* Fushimi Inari Smart Guide — offline support (v191 MANUAL MAP PAN + TORII TUNNEL LOADING) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v190';
+const CACHE_NAME = 'fushimi-smart-guide-v191';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 190;
+const WORKER_VERSION = 191;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
