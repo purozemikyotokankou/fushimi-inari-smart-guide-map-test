@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v188 FREE PAN + TORII LOOP test) */
+/* Fushimi Inari Smart Guide — offline support (v190 UNBOUNDED MAP PAN) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v189';
+const CACHE_NAME = 'fushimi-smart-guide-v190';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 188;
+const WORKER_VERSION = 190;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -61,7 +61,7 @@ async function preloadVideoLast(client) {
 }
 
 const PRELOAD_CORE = [
-  './index.html', './home.html', './planner.html', './map-loading-test.html',
+  './index.html', './home.html', './planner.html',
   './css/style.css', './css/planner.css',
   './js/language.js', './js/home-ui.js', './js/home-boot.js',
   './js/planner.js', './js/map-engine-maplibre.js', './js/planner-weather.js', './js/planner-ambient-light.js',

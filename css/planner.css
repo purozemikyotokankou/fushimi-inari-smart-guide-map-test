@@ -7219,11 +7219,23 @@ body.planner-page .liquid-cursor {
 }
 
 
-/* V189 — Put the MapLibre canvas above the inert Leaflet panes so drag gestures
-   always reach the live 3D map. Marker proxies and popups remain above it. */
-#maplibreBase { z-index: 500 !important; pointer-events: auto !important; }
+/* V190 — 地図の固定範囲をなくし、MapLibreキャンバスに直接ジェスチャーを渡す。 */
+#maplibreBase {
+    z-index: 1 !important;
+    pointer-events: auto !important;
+    touch-action: none !important;
+}
 #maplibreBase .maplibregl-canvas-container,
-#maplibreBase .maplibregl-canvas { pointer-events: auto !important; touch-action: none !important; }
-#map.maplibre-active .leaflet-map-pane { pointer-events: none !important; }
-#map.maplibre-active .fushimi-marker-overlay { z-index: 680 !important; pointer-events: none !important; }
-#map.maplibre-active .fushimi-marker-overlay .fushimi-marker-proxy { pointer-events: auto !important; }
+#maplibreBase .maplibregl-canvas {
+    pointer-events: auto !important;
+    touch-action: none !important;
+}
+#map.maplibre-active .leaflet-map-pane {
+    pointer-events: none !important;
+}
+#map.maplibre-active .fushimi-marker-overlay {
+    pointer-events: none !important;
+}
+#map.maplibre-active .fushimi-marker-overlay .fushimi-marker-proxy {
+    pointer-events: auto !important;
+}

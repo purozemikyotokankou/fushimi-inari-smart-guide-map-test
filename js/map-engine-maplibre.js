@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v187 TORII LOOP test)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v190 unrestricted map pan)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -17,17 +17,8 @@
     const TERRAIN_SOURCE_ID = "fushimi-terrain-dem";
     const HILLSHADE_LAYER_ID = "fushimi-terrain-hillshade";
     const TERRAIN_TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-    // DEMは伏見稲荷周辺の半径約2kmをカバーする矩形タイル範囲だけ取得する。
-    // MapLibreのsource boundsは矩形指定のため、2km円を内包する外接矩形になる。
-    const TERRAIN_RANGE_CENTER = [135.784020, 34.968186]; // [lng, lat]
-    const TERRAIN_RANGE_RADIUS_METERS = 2000;
-    const TERRAIN_BOUNDS = (() => {
-        const lng = TERRAIN_RANGE_CENTER[0];
-        const lat = TERRAIN_RANGE_CENTER[1];
-        const latDelta = TERRAIN_RANGE_RADIUS_METERS / 111320;
-        const lngDelta = TERRAIN_RANGE_RADIUS_METERS / (111320 * Math.cos(lat * Math.PI / 180));
-        return [lng - lngDelta, lat - latDelta, lng + lngDelta, lat + latDelta];
-    })();
+    // 地図を自由に移動できるよう、DEMソースにも地理的なboundsを設定しない。
+    // 3D標高は表示位置に応じて必要なタイルを読み込む。
     // Terrainとhillshadeは別ソースにし、MapLibre推奨の描画品質を保つ。
     const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
     const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
@@ -108,8 +99,8 @@
         if (ready) {
             hideStatus();
             if (fixed3DBadge && terrainEnabled) {
-                fixed3DBadge.textContent = "3D地形 固定表示";
-                fixed3DBadge.title = "標高タイルの初回読み込みが完了しました";
+                fixed3DBadge.textContent = "3D地形 表示中";
+                fixed3DBadge.title = "標高タイルの読み込みが完了しました";
                 fixed3DBadge.hidden = false;
             }
             scheduleOverlayProjection();
@@ -503,13 +494,11 @@
             document.head.appendChild(preconnect);
         }
 
-        // Terrain / hillshadeそれぞれのDEMソースを同じ周辺範囲に制限。
-        // 別ソースを維持して、MapLibreで推奨される地形と陰影の描画品質を保つ。
+        // DEMソースに地理的な境界を設けず、パンした先の標高タイルも読み込めるようにする。
         if (!mapLibreMap.getSource(TERRAIN_SOURCE_ID)) {
             mapLibreMap.addSource(TERRAIN_SOURCE_ID, {
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
-                bounds: TERRAIN_BOUNDS,
                 tileSize: 256,
                 minzoom: 0,
                 maxzoom: 15,
@@ -521,7 +510,6 @@
             mapLibreMap.addSource(HILLSHADE_SOURCE_ID, {
                 type: "raster-dem",
                 tiles: [TERRAIN_TILE_URL],
-                bounds: TERRAIN_BOUNDS,
                 tileSize: 256,
                 minzoom: 0,
                 maxzoom: 15,
@@ -556,9 +544,9 @@
         const badge = document.createElement("div");
         badge.className = "maplibre-fixed-3d-badge";
         badge.hidden = true; // 読み込み中は文字バッジを出さず、鳥居ピクトグラムだけを見せる。
-        badge.textContent = "3D地形 固定表示";
+        badge.textContent = "3D地形 表示中";
         badge.setAttribute("role", "status");
-        badge.setAttribute("aria-label", "伏見稲荷周辺の3D地形を固定表示しています");
+        badge.setAttribute("aria-label", "伏見稲荷周辺の3D地形を表示しています");
         badge.style.cssText = [
             "position:absolute",
             "z-index:880",
@@ -883,6 +871,36 @@
         }
     }
 
+    // MapLibreの地図操作を常時有効にする。
+    // 地図の表示範囲を固定せず、パン・ズームはユーザーに任せる。
+    // 3Dの初期角度(54度)と北向きは維持する。
+    function enableFreeMapMovement() {
+        if (!mapLibreMap) return;
+        try { mapLibreMap.setMaxBounds(null); } catch (_) {}
+        try { mapLibreMap.dragPan?.enable?.(); } catch (_) {}
+        try { mapLibreMap.scrollZoom?.enable?.(); } catch (_) {}
+        try { mapLibreMap.doubleClickZoom?.enable?.(); } catch (_) {}
+        try { mapLibreMap.touchZoomRotate?.enable?.(); } catch (_) {}
+        try { mapLibreMap.touchZoomRotate?.disableRotation?.(); } catch (_) {}
+        try { mapLibreMap.touchPitch?.disable?.(); } catch (_) {}
+        try { mapLibreMap.dragRotate?.disable?.(); } catch (_) {}
+        try { mapLibreMap.keyboard?.disableRotation?.(); } catch (_) {}
+
+        const root = mapLibreMap.getContainer?.();
+        const canvasContainer = mapLibreMap.getCanvasContainer?.();
+        const canvas = mapLibreMap.getCanvas?.();
+        if (root) root.style.pointerEvents = "auto";
+        if (canvasContainer) {
+            canvasContainer.style.pointerEvents = "auto";
+            canvasContainer.style.touchAction = "none";
+        }
+        if (canvas) {
+            canvas.style.pointerEvents = "auto";
+            canvas.style.touchAction = "none";
+            canvas.style.cursor = "grab";
+        }
+    }
+
     function createMap() {
         const container = document.getElementById("maplibreBase");
         if (!container) return null;
@@ -892,7 +910,7 @@
         container.style.inset = "0";
         container.style.width = "100%";
         container.style.height = "100%";
-        container.style.zIndex = "500";
+        container.style.zIndex = "0";
         container.style.overflow = "hidden";
 
         const retry = retryButton();
@@ -943,8 +961,7 @@
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
                 maxZoom: 18 - LEAFLET_ZOOM_OFFSET,
-                // V188: カメラ移動を制限しない。地形DEMのsource boundsは取得範囲だけを制限し、
-                // 地図のパン範囲には適用しない。nullを明示して古いmaxBounds設定も解除する。
+                // 地図の移動範囲は固定しない。地形DEMにもboundsを設けない。
                 maxBounds: null,
                 dragPan: true,
                 scrollZoom: true,
@@ -968,6 +985,7 @@
                 fadeDuration: 0,
                 cancelPendingTileRequestsWhileZooming: true
             });
+            enableFreeMapMovement();
 
             function handleMapStyleReady() {
                 if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
@@ -984,15 +1002,7 @@
                 add3DBuildings();
                 addMarkerProjectionReferenceLayer();
                 // スタイル再読込後もドラッグ移動・ズームを必ず有効化する。
-                mapLibreMap.setMaxBounds(null);
-                mapLibreMap.dragPan?.enable?.();
-                const activeCanvas = mapLibreMap.getCanvas?.();
-                if (activeCanvas) { activeCanvas.style.pointerEvents = "auto"; activeCanvas.style.touchAction = "none"; }
-                mapLibreMap.scrollZoom?.enable?.();
-                mapLibreMap.doubleClickZoom?.enable?.();
-                mapLibreMap.touchZoomRotate?.enable?.();
-                mapLibreMap.touchZoomRotate?.disableRotation?.();
-                mapLibreMap.touchPitch?.disable?.();
+                enableFreeMapMovement();
                 enableFixedTerrain();
                 restoreNativeRouteAfterStyleLoad();
                 if (mapLibreMap) mapLibreMap.resize();
@@ -1000,16 +1010,7 @@
             }
 
             // 3D角度と北向きを固定。ピンチズーム・ドラッグ移動は引き続き使用可能。
-            mapLibreMap.dragPan?.enable?.();
-            const activeCanvas = mapLibreMap.getCanvas?.();
-            if (activeCanvas) { activeCanvas.style.pointerEvents = "auto"; activeCanvas.style.touchAction = "none"; }
-            mapLibreMap.scrollZoom?.enable?.();
-            mapLibreMap.doubleClickZoom?.enable?.();
-            mapLibreMap.touchZoomRotate?.enable?.();
-            mapLibreMap.dragRotate?.disable?.();
-            mapLibreMap.touchZoomRotate?.disableRotation?.();
-            mapLibreMap.touchPitch?.disable?.();
-            mapLibreMap.keyboard?.disableRotation?.();
+            enableFreeMapMovement();
 
             mapLibreMap.on("load", function () {
                 handleMapStyleReady();
