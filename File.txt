@@ -1,16 +1,29 @@
-伏見稲荷スマートガイド V163 3Dマップテスト版
-
-index.html        言語選択
-home.html         ホーム
-planner.html      MapLibre + OpenFreeMap Positron を使うルート・ナビマップ
-spots.html        スポット一覧
-spot-manager.html スポット管理ツール
-sando-editor.html 参道データ編集ツール
-data/spots.json   スポットデータ
-data/routes.json  参道・ルートデータ
-css/              スタイル
-js/               アプリケーションスクリプト
-images/           画像・カスタムアイコン
-videos/           ホーム動画
-
-GitHub Pagesへの公開手順は TEST_SETUP_GUIDE_JA.md を参照してください。
+Fushimi-Inari-Smart-Guide
+│
+├── index.html          ← 言語選択
+├── home.html           ← ホーム
+├── map.html            ← 観光マップ
+├── planner.html        ← AIルート作成
+├── spots.html          ← スポット紹介
+├── around.html         ← 周辺施設
+├── support.html        ← 困ったとき
+│
+├── css
+│   └── style.css
+│
+├── js
+│   ├── language.js
+│   ├── home.js
+│   ├── map.js
+│   ├── planner.js
+│   └── support.js
+│
+├── data
+│   ├── spots.json
+│   └── routes.json
+│
+└── images		←画像
+| hero1.jpg | 千本鳥居（最初に表示するメイン画像） |
+| hero2.jpg | 本殿・楼門              |
+| hero3.jpg | 四ツ辻からの景色           |
+| hero4.jpg | 夜の伏見稲荷・ライトアップ系     |
