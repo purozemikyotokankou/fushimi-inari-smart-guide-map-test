@@ -28,7 +28,9 @@ document.addEventListener("DOMContentLoaded", function () {
     ========================= */
 
     function getLanguage() {
-        return localStorage.getItem("language") || "ja";
+        const selected = document.getElementById("languageSelect")?.value;
+        const saved = localStorage.getItem("language") || "ja";
+        return String(selected || saved).toLowerCase().slice(0, 2);
     }
 
     function tSafe(key, fallback) {
@@ -44,24 +46,22 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function localized(value) {
-        if (value === null || value === undefined) {
-            return "";
-        }
-
-        if (typeof value === "string") {
-            return value;
-        }
-
+        if (value === null || value === undefined) return "";
+        if (typeof value === "string") return value;
         const lang = getLanguage();
+        return value[lang] || (lang === "zh" ? value["zh-CN"] : "") || value.ja || value.en || value.zh || value.ko || "";
+    }
 
-        return (
-            value[lang] ||
-            value.ja ||
-            value.en ||
-            value.zh ||
-            value.ko ||
-            ""
-        );
+    function localizedSpot(spot, field) {
+        if (!spot) return "";
+        const lang = getLanguage();
+        const entries = spot.i18n && typeof spot.i18n === "object" ? spot.i18n : {};
+        const candidates = lang === "zh" ? ["zh", "zh-CN", "zh-TW"] : [lang];
+        for (const key of candidates) {
+            const text = entries[key] && entries[key][field];
+            if (text !== null && text !== undefined && String(text).trim()) return String(text);
+        }
+        return localized(spot[field]);
     }
 
 
@@ -235,7 +235,7 @@ document.addEventListener("DOMContentLoaded", function () {
             marker.bindPopup(`
                 <div style="min-width:180px;">
                     <strong>
-                        ${escapeHTML(localized(spot.name))}
+                        ${escapeHTML(localizedSpot(spot, "name"))}
                     </strong>
                 </div>
             `);
@@ -304,19 +304,13 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
 
-        const name = localized(spot.name);
+        const name = localizedSpot(spot, "name");
 
-        const category = getCategoryLabel(
-            spot.category
-        );
+        const category = localizedSpot(spot, "category") || getCategoryLabel(spot.category);
 
-        const description = localized(
-            spot.description
-        );
+        const description = localizedSpot(spot, "description");
 
-        const time = localized(
-            spot.time
-        );
+        const time = localizedSpot(spot, "time");
 
 
         let imageHTML = "";
@@ -403,15 +397,15 @@ document.addEventListener("DOMContentLoaded", function () {
         return spots.filter(function (spot) {
 
             const name =
-                localized(spot.name)
+                localizedSpot(spot, "name")
                     .toLowerCase();
 
             const description =
-                localized(spot.description)
+                localizedSpot(spot, "description")
                     .toLowerCase();
 
             const category =
-                localized(spot.category)
+                localizedSpot(spot, "category")
                     .toLowerCase();
 
 
@@ -471,20 +465,14 @@ document.addEventListener("DOMContentLoaded", function () {
             function (spot) {
 
                 const name =
-                    localized(spot.name);
+                    localizedSpot(spot, "name");
 
-                const category =
-                    getCategoryLabel(
-                        spot.category
-                    );
+                const category = localizedSpot(spot, "category") || getCategoryLabel(spot.category);
 
-                const description =
-                    localized(
-                        spot.description
-                    );
+                const description = localizedSpot(spot, "description");
 
                 const time =
-                    localized(spot.time);
+                    localizedSpot(spot, "time");
 
 
                 const imageHTML =

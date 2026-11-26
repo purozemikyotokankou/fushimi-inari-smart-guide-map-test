@@ -1,4 +1,11 @@
-/* V162 MapLibre test environment. The planner map uses OpenFreeMap Positron.
- * CARTO key intentionally left blank because this test map does not use CARTO.
+/*
+ * CARTO Basemaps API key configuration for Fushimi Inari Smart Guide.
+ *
+ * The key was supplied by the project owner. Restrict the allowed website/referrer
+ * host in the CARTO dashboard to:
+ *   purozemikyotokankou.github.io
+ *
+ * This file is delivered to browsers, so the key is public. Keep usage monitored
+ * and keep the OpenStreetMap/CARTO attribution visible on the map.
  */
-window.FUSHIMI_CARTO_BASEMAP_API_KEY = "";
+window.FUSHIMI_CARTO_BASEMAP_API_KEY = "cb1_4pog_2_5750ba26708293e68379f928";
