@@ -7061,3 +7061,41 @@ body.planner-page .liquid-cursor {
 .fushimi-marker-overlay .fushimi-marker-proxy[aria-hidden="true"] {
   pointer-events:none !important;
 }
+
+
+/* ============================================================
+   V185 — 3D-first initial reveal
+   Keep the vector map and its marker proxies hidden until the first
+   terrain-backed MapLibre frame is ready. This removes the visible
+   flat-map -> 3D transition during startup.
+============================================================ */
+#maplibreBase .maplibregl-canvas-container {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity .24s ease;
+}
+#maplibreBase.is-maplibre-3d-ready .maplibregl-canvas-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+#maplibreBase:not(.is-maplibre-3d-ready) .maplibregl-control-container {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+#maplibreBase.is-maplibre-3d-ready .maplibregl-control-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+#map.maplibre-active:not(.is-maplibre-3d-ready) .fushimi-marker-overlay {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+#map.maplibre-active.is-maplibre-3d-ready .fushimi-marker-overlay {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    #maplibreBase .maplibregl-canvas-container {
+        transition: none !important;
+    }
+}

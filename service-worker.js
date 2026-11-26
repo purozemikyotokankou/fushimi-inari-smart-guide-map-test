@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v184 isolated marker overlay) */
+/* Fushimi Inari Smart Guide — offline support (v185 N02-25 railway + 3D-first startup) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v184';
+const CACHE_NAME = 'fushimi-smart-guide-v185';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 184;
+const WORKER_VERSION = 185;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -72,7 +72,7 @@ const PRELOAD_CORE = [
   'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js',
   'https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css'
 ];
-const PRELOAD_DATA = ['./data/spots.json', './data/routes.json'];
+const PRELOAD_DATA = ['./data/spots.json', './data/routes.json', './data/railways-fushimi.geojson'];
 const PRELOAD_ICONS = [
   './noicon.svg', './shop.svg', './eat.svg',
   './images/icons/category-all.svg', './images/icons/category-back.svg',

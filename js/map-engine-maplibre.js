@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v184 isolated marker overlay + linked route style)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v185 N02-25 railway + 3D-first startup)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -60,6 +60,23 @@
     let routeBeamStart = 0;
     let routeBeamLastPaint = 0;
 
+    // N02-25 railway geometry is clipped to the same 2km Fushimi area.
+    const RAILWAY_SOURCE_ID = "fushimi-national-railway-n02-25";
+    const RAILWAY_CASING_LAYER_ID = "fushimi-national-railway-casing";
+    const RAILWAY_LINE_LAYER_ID = "fushimi-national-railway-line";
+    const RAILWAY_DATA_URL = new URL("./data/railways-fushimi.geojson", window.location.href).toString();
+    const RAILWAY_ATTRIBUTION = '<a href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener">国土数値情報（鉄道）N02-25（国土交通省）</a> / CC BY 4.0';
+    let railwayGeoJSON = null;
+    let railwayLoadPromise = null;
+
+    // First paint is held back until MapLibre has enabled terrain and loaded the
+    // initial DEM tile. This prevents a flat-map flash followed by a 3D snap.
+    let styleReadyForCurrentStyle = false;
+    let terrainReadyPollTimer = 0;
+    let terrainReadyStartedAt = 0;
+    let terrainInitialIdleSeen = false;
+    const TERRAIN_FIRST_FRAME_TIMEOUT_MS = 24000;
+
     const status = () => document.getElementById("maplibreStatus");
     const statusText = () => document.getElementById("maplibreStatusText");
     const retryButton = () => document.getElementById("maplibreRetry");
@@ -76,6 +93,95 @@
     function hideStatus() {
         const node = status();
         if (node) node.hidden = true;
+    }
+
+    function setMapSurfaceReady(ready) {
+        const mapContainer = document.getElementById("maplibreBase");
+        const mapRoot = document.getElementById("map");
+        mapContainer?.classList.toggle("is-maplibre-3d-ready", !!ready);
+        mapRoot?.classList.toggle("is-maplibre-3d-ready", !!ready);
+        if (ready) {
+            hideStatus();
+            if (fixed3DBadge && terrainEnabled) {
+                fixed3DBadge.textContent = "3D地形 固定表示";
+                fixed3DBadge.title = "標高タイルの初回読み込みが完了しました";
+            }
+            scheduleOverlayProjection();
+        }
+    }
+
+    function loadRailwayData() {
+        if (railwayGeoJSON) return Promise.resolve(railwayGeoJSON);
+        if (railwayLoadPromise) return railwayLoadPromise;
+        railwayLoadPromise = fetch(RAILWAY_DATA_URL, { cache: "force-cache" })
+            .then((response) => {
+                if (!response.ok) throw new Error(`鉄道路線データ HTTP ${response.status}`);
+                return response.json();
+            })
+            .then((data) => {
+                if (!data || data.type !== "FeatureCollection" || !Array.isArray(data.features)) {
+                    throw new Error("鉄道路線GeoJSONの形式が正しくありません。");
+                }
+                railwayGeoJSON = data;
+                if (mapLibreMap && loaded && mapLibreMap.isStyleLoaded()) ensureRailwayLayers();
+                console.info(`[Fushimi Map] N02-25 local railway features loaded: ${data.features.length}`);
+                return railwayGeoJSON;
+            })
+            .catch((error) => {
+                railwayLoadPromise = null;
+                console.warn("[Fushimi Map] N02-25 railway data could not be loaded:", error);
+                return null;
+            });
+        return railwayLoadPromise;
+    }
+
+    function ensureRailwayLayers() {
+        if (!mapLibreMap || !loaded || !mapLibreMap.isStyleLoaded() || !railwayGeoJSON) return false;
+        try {
+            if (!mapLibreMap.getSource(RAILWAY_SOURCE_ID)) {
+                mapLibreMap.addSource(RAILWAY_SOURCE_ID, {
+                    type: "geojson",
+                    data: railwayGeoJSON,
+                    attribution: RAILWAY_ATTRIBUTION
+                });
+            }
+
+            const beforeLayerId = mapLibreMap.getLayer("fushimi-3d-buildings")
+                ? "fushimi-3d-buildings"
+                : (mapLibreMap.getStyle()?.layers || []).find((layer) => layer.type === "symbol")?.id;
+
+            if (!mapLibreMap.getLayer(RAILWAY_CASING_LAYER_ID)) {
+                mapLibreMap.addLayer({
+                    id: RAILWAY_CASING_LAYER_ID,
+                    type: "line",
+                    source: RAILWAY_SOURCE_ID,
+                    layout: { "line-cap": "round", "line-join": "round" },
+                    paint: {
+                        "line-color": "#FFFFFF",
+                        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 3.2, 17, 5.6, 19, 6.8],
+                        "line-opacity": 0.98
+                    }
+                }, beforeLayerId);
+            }
+            if (!mapLibreMap.getLayer(RAILWAY_LINE_LAYER_ID)) {
+                mapLibreMap.addLayer({
+                    id: RAILWAY_LINE_LAYER_ID,
+                    type: "line",
+                    source: RAILWAY_SOURCE_ID,
+                    layout: { "line-cap": "round", "line-join": "round" },
+                    paint: {
+                        // Transport category blue, with a white casing for legibility.
+                        "line-color": "#0041FF",
+                        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.5, 17, 3.0, 19, 3.8],
+                        "line-opacity": 1
+                    }
+                }, beforeLayerId);
+            }
+            return true;
+        } catch (error) {
+            console.warn("[Fushimi Map] N02-25 railway layer could not be added:", error);
+            return false;
+        }
     }
 
     function notifyUserMapGesture() {
@@ -546,17 +652,65 @@
     let terrainEnableAttempts = 0;
     let terrainEnableTimer = 0;
 
+    function waitForInitialTerrainFrame() {
+        if (!mapLibreMap || !terrainEnabled) return;
+        if (terrainReadyPollTimer) window.clearTimeout(terrainReadyPollTimer);
+        terrainReadyStartedAt = Date.now();
+        terrainInitialIdleSeen = false;
+        mapLibreMap.once("idle", function () {
+            terrainInitialIdleSeen = true;
+        });
+
+        const check = () => {
+            terrainReadyPollTimer = 0;
+            if (!mapLibreMap || !terrainEnabled) return;
+            let elevation = null;
+            try {
+                elevation = mapLibreMap.queryTerrainElevation(mapLibreMap.getCenter());
+            } catch (_) {
+                elevation = null;
+            }
+            let demSourceLoaded = false;
+            try {
+                demSourceLoaded = typeof mapLibreMap.isSourceLoaded === "function"
+                    ? mapLibreMap.isSourceLoaded(TERRAIN_SOURCE_ID)
+                    : terrainInitialIdleSeen;
+            } catch (_) {
+                demSourceLoaded = false;
+            }
+            if (terrainInitialIdleSeen && demSourceLoaded && Number.isFinite(elevation)) {
+                window.requestAnimationFrame(() => {
+                    if (!mapLibreMap || !terrainEnabled) return;
+                    setMapSurfaceReady(true);
+                    console.info("[Fushimi Map] First visible map frame is terrain-enabled (3D-first startup).");
+                });
+                return;
+            }
+            if (Date.now() - terrainReadyStartedAt >= TERRAIN_FIRST_FRAME_TIMEOUT_MS) {
+                markTerrainFailure(new Error("初回の標高タイル読み込みがタイムアウトしました。"));
+                return;
+            }
+            terrainReadyPollTimer = window.setTimeout(check, 220);
+        };
+        check();
+    }
+
     function markTerrainFailure(error) {
         terrainEnabled = false;
         terrainEnableScheduled = false;
         if (terrainEnableTimer) window.clearTimeout(terrainEnableTimer);
+        if (terrainReadyPollTimer) window.clearTimeout(terrainReadyPollTimer);
         terrainEnableTimer = 0;
+        terrainReadyPollTimer = 0;
         console.warn("[Fushimi Map] Fixed 3D terrain could not be enabled:", error);
         createFixed3DBadge();
         if (fixed3DBadge) {
             fixed3DBadge.textContent = "3D地形 読込失敗";
             fixed3DBadge.title = error && error.message ? error.message : String(error || "unknown error");
         }
+        // DEMが使えない場合だけ、傾斜カメラのベースマップへフォールバックする。
+        setMapSurfaceReady(true);
+        showStatus("3D地形を読み込めませんでした。地図は表示しています。通信環境を確認して再読み込みしてください。", true);
     }
 
     function enableFixedTerrain() {
@@ -590,10 +744,11 @@
                 terrainEnableScheduled = false;
                 createFixed3DBadge();
                 if (fixed3DBadge) {
-                    fixed3DBadge.textContent = "3D地形 固定表示";
-                    fixed3DBadge.title = "AWS Terrain Tiles の標高データを使用しています";
+                    fixed3DBadge.textContent = "3D地形 読込中…";
+                    fixed3DBadge.title = "標高タイルを読み込んでいます";
                 }
-                console.info("[Fushimi Map] Fixed 3D terrain enabled (same DEM source layout as V176).");
+                console.info("[Fushimi Map] Fixed 3D terrain enabled; waiting for the initial DEM-backed idle frame.");
+                waitForInitialTerrainFrame();
                 scheduleOverlayProjection();
             } catch (error) {
                 // Style切替の瞬間に当たったエラーだけは、次のフレームで再試行する。
@@ -814,13 +969,18 @@
                     return;
                 }
                 loaded = false;
+                styleReadyForCurrentStyle = false;
                 terrainEnabled = false;
                 terrainEnableScheduled = false;
                 terrainEnableAttempts = 0;
+                terrainInitialIdleSeen = false;
                 if (terrainEnableTimer) window.clearTimeout(terrainEnableTimer);
+                if (terrainReadyPollTimer) window.clearTimeout(terrainReadyPollTimer);
                 terrainEnableTimer = 0;
+                terrainReadyPollTimer = 0;
+                setMapSurfaceReady(false);
                 if (fixed3DBadge) fixed3DBadge.textContent = "3D地形 読込中…";
-                showStatus("3Dマップを再読み込みしています…", false);
+                showStatus("3D地形を準備してから地図を表示します…", false);
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 mapLibreMap.setStyle(STYLE_URL);
                 loadTimeoutId = window.setTimeout(function () {
@@ -835,7 +995,9 @@
         }
 
         try {
-            showStatus("3Dマップを読み込んでいます…", false);
+            setMapSurfaceReady(false);
+            showStatus("3D地形を準備してから地図を表示します…", false);
+            loadRailwayData();
             if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
             mapLibreMap = new window.maplibregl.Map({
                 container,
@@ -868,13 +1030,21 @@
             });
 
             function handleMapStyleReady() {
+                if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
+                if (styleReadyForCurrentStyle) {
+                    ensureRailwayLayers();
+                    restoreNativeRouteAfterStyleLoad();
+                    return;
+                }
+                styleReadyForCurrentStyle = true;
                 loaded = true;
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 loadTimeoutId = 0;
-                hideStatus();
                 container.classList.add("is-maplibre-loaded");
+                showStatus("3D地形を準備しています…", false);
                 add3DBuildings();
                 addMarkerProjectionReferenceLayer();
+                ensureRailwayLayers();
                 enableFixedTerrain();
                 restoreNativeRouteAfterStyleLoad();
                 if (mapLibreMap) mapLibreMap.resize();
@@ -889,7 +1059,7 @@
 
             mapLibreMap.on("load", function () {
                 handleMapStyleReady();
-                console.info("[Fushimi Map Test] MapLibre 3D + OpenFreeMap Positron loaded.");
+                console.info("[Fushimi Map Test] OpenFreeMap style loaded; terrain is prepared before the first visible map frame.");
             });
 
             // style.load also fires after setStyle(); using it for readiness

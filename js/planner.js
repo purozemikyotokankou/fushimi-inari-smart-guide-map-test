@@ -1,11 +1,11 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ============================================================
-    // BUILD MARKER — V184
+    // BUILD MARKER — V185
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V184-ISOLATED-MARKERS-ROUTE-COLOR";
-    console.log("[Fushimi Inari Smart Guide] planner.js V184-ISOLATED-MARKERS-ROUTE-COLOR loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V185-N02-25-RAILWAY-3D-FIRST";
+    console.log("[Fushimi Inari Smart Guide] planner.js V185-N02-25-RAILWAY-3D-FIRST loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
