@@ -1,7 +1,7 @@
-/* Fushimi Inari Smart Guide — offline support (v191 MANUAL MAP PAN + TORII TUNNEL LOADING) */
+/* Fushimi Inari Smart Guide — offline support (v192 BLENDED MAP LOADING) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v191';
+const CACHE_NAME = 'fushimi-smart-guide-v192';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
 const WORKER_VERSION = 191;
 const VIDEO_PATH = '/videos/fushimi.mp4';
