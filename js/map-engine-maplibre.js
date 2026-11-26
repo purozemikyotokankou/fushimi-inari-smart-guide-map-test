@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v185 N02-25 railway + 3D-first startup)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v186 free-pan + torii loading)
  * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -60,15 +60,6 @@
     let routeBeamStart = 0;
     let routeBeamLastPaint = 0;
 
-    // N02-25 railway geometry is clipped to the same 2km Fushimi area.
-    const RAILWAY_SOURCE_ID = "fushimi-national-railway-n02-25";
-    const RAILWAY_CASING_LAYER_ID = "fushimi-national-railway-casing";
-    const RAILWAY_LINE_LAYER_ID = "fushimi-national-railway-line";
-    const RAILWAY_DATA_URL = new URL("./data/railways-fushimi.geojson", window.location.href).toString();
-    const RAILWAY_ATTRIBUTION = '<a href="https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-2025.html" target="_blank" rel="noopener">国土数値情報（鉄道）N02-25（国土交通省）</a> / CC BY 4.0';
-    let railwayGeoJSON = null;
-    let railwayLoadPromise = null;
-
     // First paint is held back until MapLibre has enabled terrain and loaded the
     // initial DEM tile. This prevents a flat-map flash followed by a 3D snap.
     let styleReadyForCurrentStyle = false;
@@ -86,6 +77,7 @@
         if (!node) return;
         if (statusText()) statusText().textContent = message;
         if (retryButton()) retryButton().hidden = !canRetry;
+        node.setAttribute("aria-label", message || "伏見稲荷の地図を読み込んでいます");
         node.hidden = false;
         node.classList.toggle("is-error", !!canRetry);
     }
@@ -105,82 +97,9 @@
             if (fixed3DBadge && terrainEnabled) {
                 fixed3DBadge.textContent = "3D地形 固定表示";
                 fixed3DBadge.title = "標高タイルの初回読み込みが完了しました";
+                fixed3DBadge.hidden = false;
             }
             scheduleOverlayProjection();
-        }
-    }
-
-    function loadRailwayData() {
-        if (railwayGeoJSON) return Promise.resolve(railwayGeoJSON);
-        if (railwayLoadPromise) return railwayLoadPromise;
-        railwayLoadPromise = fetch(RAILWAY_DATA_URL, { cache: "force-cache" })
-            .then((response) => {
-                if (!response.ok) throw new Error(`鉄道路線データ HTTP ${response.status}`);
-                return response.json();
-            })
-            .then((data) => {
-                if (!data || data.type !== "FeatureCollection" || !Array.isArray(data.features)) {
-                    throw new Error("鉄道路線GeoJSONの形式が正しくありません。");
-                }
-                railwayGeoJSON = data;
-                if (mapLibreMap && loaded && mapLibreMap.isStyleLoaded()) ensureRailwayLayers();
-                console.info(`[Fushimi Map] N02-25 local railway features loaded: ${data.features.length}`);
-                return railwayGeoJSON;
-            })
-            .catch((error) => {
-                railwayLoadPromise = null;
-                console.warn("[Fushimi Map] N02-25 railway data could not be loaded:", error);
-                return null;
-            });
-        return railwayLoadPromise;
-    }
-
-    function ensureRailwayLayers() {
-        if (!mapLibreMap || !loaded || !mapLibreMap.isStyleLoaded() || !railwayGeoJSON) return false;
-        try {
-            if (!mapLibreMap.getSource(RAILWAY_SOURCE_ID)) {
-                mapLibreMap.addSource(RAILWAY_SOURCE_ID, {
-                    type: "geojson",
-                    data: railwayGeoJSON,
-                    attribution: RAILWAY_ATTRIBUTION
-                });
-            }
-
-            const beforeLayerId = mapLibreMap.getLayer("fushimi-3d-buildings")
-                ? "fushimi-3d-buildings"
-                : (mapLibreMap.getStyle()?.layers || []).find((layer) => layer.type === "symbol")?.id;
-
-            if (!mapLibreMap.getLayer(RAILWAY_CASING_LAYER_ID)) {
-                mapLibreMap.addLayer({
-                    id: RAILWAY_CASING_LAYER_ID,
-                    type: "line",
-                    source: RAILWAY_SOURCE_ID,
-                    layout: { "line-cap": "round", "line-join": "round" },
-                    paint: {
-                        "line-color": "#FFFFFF",
-                        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 3.2, 17, 5.6, 19, 6.8],
-                        "line-opacity": 0.98
-                    }
-                }, beforeLayerId);
-            }
-            if (!mapLibreMap.getLayer(RAILWAY_LINE_LAYER_ID)) {
-                mapLibreMap.addLayer({
-                    id: RAILWAY_LINE_LAYER_ID,
-                    type: "line",
-                    source: RAILWAY_SOURCE_ID,
-                    layout: { "line-cap": "round", "line-join": "round" },
-                    paint: {
-                        // Transport category blue, with a white casing for legibility.
-                        "line-color": "#0041FF",
-                        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.5, 17, 3.0, 19, 3.8],
-                        "line-opacity": 1
-                    }
-                }, beforeLayerId);
-            }
-            return true;
-        } catch (error) {
-            console.warn("[Fushimi Map] N02-25 railway layer could not be added:", error);
-            return false;
         }
     }
 
@@ -623,6 +542,7 @@
         if (!host) return;
         const badge = document.createElement("div");
         badge.className = "maplibre-fixed-3d-badge";
+        badge.hidden = true; // 読み込み中は文字バッジを出さず、鳥居ピクトグラムだけを見せる。
         badge.textContent = "3D地形 固定表示";
         badge.setAttribute("role", "status");
         badge.setAttribute("aria-label", "伏見稲荷周辺の3D地形を固定表示しています");
@@ -707,6 +627,7 @@
         if (fixed3DBadge) {
             fixed3DBadge.textContent = "3D地形 読込失敗";
             fixed3DBadge.title = error && error.message ? error.message : String(error || "unknown error");
+            fixed3DBadge.hidden = false;
         }
         // DEMが使えない場合だけ、傾斜カメラのベースマップへフォールバックする。
         setMapSurfaceReady(true);
@@ -746,6 +667,7 @@
                 if (fixed3DBadge) {
                     fixed3DBadge.textContent = "3D地形 読込中…";
                     fixed3DBadge.title = "標高タイルを読み込んでいます";
+                    fixed3DBadge.hidden = true;
                 }
                 console.info("[Fushimi Map] Fixed 3D terrain enabled; waiting for the initial DEM-backed idle frame.");
                 waitForInitialTerrainFrame();
@@ -979,7 +901,10 @@
                 terrainEnableTimer = 0;
                 terrainReadyPollTimer = 0;
                 setMapSurfaceReady(false);
-                if (fixed3DBadge) fixed3DBadge.textContent = "3D地形 読込中…";
+                if (fixed3DBadge) {
+                    fixed3DBadge.textContent = "3D地形 読込中…";
+                    fixed3DBadge.hidden = true;
+                }
                 showStatus("3D地形を準備してから地図を表示します…", false);
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 mapLibreMap.setStyle(STYLE_URL);
@@ -997,7 +922,6 @@
         try {
             setMapSurfaceReady(false);
             showStatus("3D地形を準備してから地図を表示します…", false);
-            loadRailwayData();
             if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
             mapLibreMap = new window.maplibregl.Map({
                 container,
@@ -1006,8 +930,7 @@
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
                 maxZoom: 18 - LEAFLET_ZOOM_OFFSET,
-                // 地図タイルの取得・操作範囲も伏見稲荷周辺の約2km枠に限定する。
-                maxBounds: TERRAIN_BOUNDS,
+                // 地図のパン範囲は固定しない。スポット一覧の端から反対側の端まで自由に移動できる。
                 pitch: FIXED_PITCH,
                 bearing: 0,
                 minPitch: FIXED_PITCH,
@@ -1032,7 +955,6 @@
             function handleMapStyleReady() {
                 if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;
                 if (styleReadyForCurrentStyle) {
-                    ensureRailwayLayers();
                     restoreNativeRouteAfterStyleLoad();
                     return;
                 }
@@ -1044,7 +966,6 @@
                 showStatus("3D地形を準備しています…", false);
                 add3DBuildings();
                 addMarkerProjectionReferenceLayer();
-                ensureRailwayLayers();
                 enableFixedTerrain();
                 restoreNativeRouteAfterStyleLoad();
                 if (mapLibreMap) mapLibreMap.resize();

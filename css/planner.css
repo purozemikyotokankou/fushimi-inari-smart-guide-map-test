@@ -6899,6 +6899,9 @@ body.planner-page .liquid-cursor {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
 }
+/* V186 — Fushimi Inari loading mark: the existing torii pictogram is the only
+   visible element while the 3D map is preparing. Error details appear only
+   when retry is needed. */
 .maplibre-status {
     position: absolute;
     z-index: 2400;
@@ -6907,23 +6910,62 @@ body.planner-page .liquid-cursor {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 10px;
-    width: min(88%, 360px);
+    width: 86px;
+    height: 86px;
     box-sizing: border-box;
-    padding: 17px 20px;
-    border: 1px solid rgba(255,255,255,.9);
-    border-radius: 18px;
-    background: rgba(255,255,255,.9);
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,.94);
+    border-radius: 27px;
+    background: rgba(255,255,255,.88);
     color: #32383e;
-    box-shadow: 0 12px 34px rgba(20,30,40,.14);
-    font-size: 13px;
-    font-weight: 700;
+    box-shadow: 0 12px 34px rgba(20,30,40,.16), inset 0 1px 0 #fff;
     text-align: center;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
+    backdrop-filter: blur(15px) saturate(1.1);
+    -webkit-backdrop-filter: blur(15px) saturate(1.1);
 }
 .maplibre-status[hidden],
 .maplibre-status button[hidden] { display: none !important; }
+.maplibre-status-pictogram {
+    display: block;
+    width: 54px;
+    height: 54px;
+    object-fit: contain;
+    transform-origin: 50% 50%;
+    animation: fushimi-torii-roll 1.9s cubic-bezier(.45,.05,.55,.95) infinite;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+@keyframes fushimi-torii-roll {
+    0%   { transform: rotate(0deg) translateY(0) scale(.96); }
+    25%  { transform: rotate(90deg) translateY(-2px) scale(1.02); }
+    50%  { transform: rotate(180deg) translateY(0) scale(1.06); }
+    75%  { transform: rotate(270deg) translateY(2px) scale(1.02); }
+    100% { transform: rotate(360deg) translateY(0) scale(.96); }
+}
+.maplibre-status:not(.is-error) #maplibreStatusText {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+.maplibre-status.is-error {
+    width: min(88%, 360px);
+    height: auto;
+    min-height: 86px;
+    padding: 17px 20px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.6;
+}
+.maplibre-status.is-error .maplibre-status-pictogram { display: none; }
 .maplibre-status button {
     min-height: 36px;
     padding: 7px 16px;
@@ -6933,6 +6975,9 @@ body.planner-page .liquid-cursor {
     color: white;
     font: inherit;
     cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+    .maplibre-status-pictogram { animation-duration: 8s; }
 }
 .maplibre-camera-control {
     position: absolute;
