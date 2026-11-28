@@ -217,7 +217,7 @@
         }
     };
 
-    function installMapControlsAndPinDeclutter(leafletMap, mapLibreMap) {
+    function installPinDeclutterV209(leafletMap, mapLibreMap) {
         const mapRoot = document.getElementById("map");
         const overlay = mapRoot?.querySelector(".fushimi-marker-overlay");
         if (!mapRoot || !overlay || !mapLibreMap) return;
@@ -234,37 +234,9 @@
           #map .fushimi-marker-overlay.fushimi-declutter-labels .marker-pin { transform: scale(.88); transform-origin: center bottom; }
           .fushimi-cluster-badge { position:absolute; z-index:2147483000; width:48px; height:48px; border:3px solid #fff; border-radius:50%; display:grid; place-items:center; background:#c32622; color:#fff; font:900 16px/1 system-ui,sans-serif; box-shadow:0 4px 15px rgba(0,0,0,.28); pointer-events:auto; cursor:pointer; touch-action:manipulation; }
           .fushimi-cluster-badge:focus-visible { outline:3px solid #174ea6; outline-offset:3px; }
-          .fushimi-map-zoom { position:absolute; right:14px; bottom:62px; z-index:2147483001; display:grid; gap:8px; }
-          .fushimi-map-zoom button { width:50px; height:50px; border:1px solid rgba(0,0,0,.12); border-radius:16px; background:rgba(255,255,255,.96); color:#202124; font:800 29px/1 system-ui,sans-serif; box-shadow:0 4px 16px rgba(0,0,0,.2); cursor:pointer; touch-action:manipulation; }
-          .fushimi-map-zoom button:active { transform:scale(.94); }
-          .fushimi-map-zoom button:focus-visible { outline:3px solid #174ea6; outline-offset:2px; }
-          @media(max-width:600px){ .fushimi-map-zoom{right:10px;bottom:76px;gap:7px}.fushimi-map-zoom button{width:48px;height:48px;border-radius:15px} .fushimi-cluster-badge{width:46px;height:46px} }
-          body.is-navigation-active .fushimi-map-zoom { bottom: max(18px, env(safe-area-inset-bottom)); }
+          @media(max-width:600px){ .fushimi-cluster-badge{width:46px;height:46px} }
         `;
         if (!document.getElementById(style.id)) document.head.appendChild(style);
-
-        const zoomControl = document.createElement("div");
-        zoomControl.className = "fushimi-map-zoom";
-        zoomControl.setAttribute("role", "group");
-        zoomControl.setAttribute("aria-label", "地図の拡大・縮小");
-        zoomControl.innerHTML = '<button type="button" data-zoom="in" aria-label="地図を拡大" title="拡大">＋</button><button type="button" data-zoom="out" aria-label="地図を縮小" title="縮小">−</button>';
-        zoomControl.addEventListener("pointerdown", event => event.stopPropagation());
-        zoomControl.addEventListener("click", event => {
-            const button = event.target.closest("button[data-zoom]");
-            if (!button) return;
-            event.preventDefault(); event.stopPropagation();
-            window.FushimiMapEngine?.zoomBy?.(button.dataset.zoom === "in" ? 1 : -1);
-            updateZoomButtons();
-        });
-        mapRoot.appendChild(zoomControl);
-
-        function updateZoomButtons() {
-            const zoom = Number(window.FushimiMapEngine?.getZoom?.() ?? mapLibreMap.getZoom());
-            const buttons = zoomControl.querySelectorAll("button");
-            if (buttons[0]) buttons[0].disabled = zoom >= 23.9;
-            if (buttons[1]) buttons[1].disabled = zoom <= 0.1;
-            buttons.forEach(button => button.style.opacity = button.disabled ? ".42" : "1");
-        }
 
         let clusterFrame = 0;
         function renderDeclutter() {
@@ -275,7 +247,7 @@
             overlay.querySelectorAll(".fushimi-cluster-badge").forEach(node => node.remove());
             const proxies = [...overlay.querySelectorAll(".fushimi-marker-proxy")];
             proxies.forEach(node => node.classList.remove("fushimi-cluster-hidden"));
-            if (zoom > 15.7 || proxies.length < 2) { updateZoomButtons(); return; }
+            if (zoom > 15.7 || proxies.length < 2) return;
 
             const points = proxies.map(node => {
                 const pin = node.querySelector(".marker-pin") || node;
@@ -314,7 +286,6 @@
                 });
                 overlay.appendChild(badge);
             });
-            updateZoomButtons();
         }
         function scheduleDeclutter() {
             if (clusterFrame) return;
@@ -337,7 +308,6 @@
         observer.observe(overlay, { childList: true });
         mapRoot.addEventListener("fushimi:marker-overlay-updated", scheduleDeclutter);
         scheduleDeclutter();
-        updateZoomButtons();
     }
 
     // V208: Start MapLibre automatically when planner.js creates its Leaflet map.
@@ -386,7 +356,7 @@
                     // This class activates the existing V183+ CSS that hides
                     // the old raster tile pane and displays the MapLibre canvas.
                     target.classList.add("maplibre-active");
-                    installMapControlsAndPinDeclutter(leafletMap, mapLibreMap);
+                    installPinDeclutterV209(leafletMap, mapLibreMap);
                     engine.resize?.();
                     leafletMap.invalidateSize?.({ pan: false });
 
