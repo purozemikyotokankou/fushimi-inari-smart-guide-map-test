@@ -7618,3 +7618,16 @@ body.planner-page .liquid-cursor {
   pointer-events: auto !important;
   touch-action: none !important;
 }
+
+
+/* V201 — centralized map input: one-finger pan, two-finger pinch, wheel zoom. */
+#map, #maplibreBase, #maplibreBase .maplibregl-canvas-container,
+#maplibreBase .maplibregl-canvas, #map .fushimi-marker-overlay .fushimi-marker-proxy {
+  touch-action: none !important;
+}
+#maplibreBase .maplibregl-canvas-container, #maplibreBase .maplibregl-canvas {
+  pointer-events: auto !important;
+}
+#map .fushimi-marker-overlay .fushimi-marker-proxy {
+  pointer-events: auto !important;
+}

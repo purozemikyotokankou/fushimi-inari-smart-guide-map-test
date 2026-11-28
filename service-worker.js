@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v199 ZOOM + GPS SENSOR FALLBACK) */
+/* Fushimi Inari Smart Guide — offline support (v201 centralized map gestures) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v200';
+const CACHE_NAME = 'fushimi-smart-guide-v201';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 198;
+const WORKER_VERSION = 201;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',

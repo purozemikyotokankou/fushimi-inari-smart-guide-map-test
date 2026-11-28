@@ -1,5 +1,5 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v191 manual map pan + torii tunnel loading)
- * MapLibre owns the base-map camera (native drag / wheel / pinch; pitch and bearing stay fixed).
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v201 centralized map gestures)
+ * MapLibre owns the base-map camera; one shared pointer/wheel controller handles drag and pinch.
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
  * original Leaflet marker nodes remain hidden to prevent duplicate paint trails.
@@ -115,6 +115,199 @@
     function notifyUserMapGesture() {
         if (programmaticCameraMove) return;
         window.dispatchEvent(new CustomEvent("fushimi:map-user-moved"));
+    }
+
+
+    // One input controller owns all map gestures. The page has a Leaflet host,
+    // a MapLibre canvas, and a separate projected-pin overlay; allowing both
+    // engines to process the same pointer caused dead/competing drag gestures.
+    let mapGestureControllerInstalled = false;
+    const mapGesturePointers = new Map();
+    let mapGestureMode = "idle";
+    let mapGestureLastDistance = 0;
+    let mapGestureLastMidpoint = null;
+    let mapGestureNotified = false;
+
+    function getMapGestureSurface(target) {
+        const element = target instanceof Element ? target : target?.parentElement;
+        if (!element) return null;
+        if (element.closest("button, a, input, select, textarea, [role='button'], .maplibregl-ctrl, .maplibre-status")) return null;
+        const marker = element.closest(".fushimi-marker-proxy");
+        if (marker && marker.getAttribute("aria-hidden") !== "true" && marker.style.pointerEvents !== "none") return marker;
+        const base = element.closest("#maplibreBase");
+        if (base && !element.closest(".maplibregl-control-container")) return base;
+        return null;
+    }
+
+    function clampGestureZoom(zoom) {
+        const min = Number.isFinite(mapLibreMap?.getMinZoom?.()) ? mapLibreMap.getMinZoom() : -1;
+        const max = Number.isFinite(mapLibreMap?.getMaxZoom?.()) ? mapLibreMap.getMaxZoom() : MAX_MAPLIBRE_ZOOM;
+        return Math.max(min, Math.min(max, zoom));
+    }
+
+    function mapGesturePoint(event) {
+        return { x: event.clientX, y: event.clientY };
+    }
+
+    function mapGestureMidpoint(a, b) {
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+
+    function mapGestureDistance(a, b) {
+        return Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+    }
+
+    function applyMapGesturePan(dx, dy) {
+        if (!mapLibreMap || (!dx && !dy)) return;
+        // MapLibre panBy internally reverses the offset; positive pointer delta
+        // therefore makes the map content follow the finger/mouse naturally.
+        try { mapLibreMap.panBy([dx, dy], { duration: 0, animate: false }); } catch (_) {}
+    }
+
+    function onMapGesturePointerDown(event) {
+        if (!mapLibreMap || (event.pointerType === "mouse" && event.button !== 0)) return;
+        const surface = getMapGestureSurface(event.target);
+        if (!surface) return;
+
+        const point = mapGesturePoint(event);
+        const marker = surface.classList?.contains("fushimi-marker-proxy") ? surface : null;
+        mapGesturePointers.set(event.pointerId, {
+            x: point.x, y: point.y,
+            lastX: point.x, lastY: point.y,
+            startX: point.x, startY: point.y,
+            marker,
+            moved: false
+        });
+
+        // Capture on the pin itself so a short tap still produces its normal click.
+        // Blank-map gestures are captured by the map root.
+        const captureTarget = marker || document.getElementById("map");
+        try { captureTarget?.setPointerCapture?.(event.pointerId); } catch (_) {}
+
+        if (mapGesturePointers.size === 1) mapGestureNotified = false;
+        if (mapGesturePointers.size >= 2) {
+            const points = Array.from(mapGesturePointers.values()).slice(0, 2);
+            mapGestureMode = "pinch";
+            mapGestureLastDistance = mapGestureDistance(points[0], points[1]);
+            mapGestureLastMidpoint = mapGestureMidpoint(points[0], points[1]);
+        } else {
+            mapGestureMode = "pan";
+        }
+        // touch-action:none on the map surface prevents browser page-scroll/zoom.
+        // Do not cancel pointerdown: marker taps must still produce their click.
+    }
+
+    function onMapGesturePointerMove(event) {
+        const active = mapGesturePointers.get(event.pointerId);
+        if (!active || !mapLibreMap) return;
+        active.x = event.clientX;
+        active.y = event.clientY;
+
+        if (mapGesturePointers.size >= 2) {
+            const points = Array.from(mapGesturePointers.values()).slice(0, 2);
+            const currentDistance = mapGestureDistance(points[0], points[1]);
+            const currentMidpoint = mapGestureMidpoint(points[0], points[1]);
+            if (mapGestureLastDistance > 0) {
+                const zoomDelta = Math.log2(currentDistance / mapGestureLastDistance);
+                const rect = document.getElementById("map")?.getBoundingClientRect();
+                if (rect && Math.abs(zoomDelta) > 0.001) {
+                    const around = mapLibreMap.unproject([
+                        currentMidpoint.x - rect.left,
+                        currentMidpoint.y - rect.top
+                    ]);
+                    const nextZoom = clampGestureZoom(mapLibreMap.getZoom() + zoomDelta);
+                    try { mapLibreMap.zoomTo(nextZoom, { around, duration: 0, animate: false }); } catch (_) {}
+                    if (!mapGestureNotified) { notifyUserMapGesture(); mapGestureNotified = true; }
+                }
+                if (mapGestureLastMidpoint) {
+                    applyMapGesturePan(
+                        currentMidpoint.x - mapGestureLastMidpoint.x,
+                        currentMidpoint.y - mapGestureLastMidpoint.y
+                    );
+                }
+            }
+            mapGestureLastDistance = currentDistance;
+            mapGestureLastMidpoint = currentMidpoint;
+            points.forEach((point) => {
+                if (Math.hypot(point.x - point.startX, point.y - point.startY) > 5) {
+                    point.moved = true;
+                    if (point.marker) point.marker.dataset.mapDragged = "1";
+                }
+            });
+            if (event.cancelable) event.preventDefault();
+            return;
+        }
+
+        if (mapGestureMode !== "pan") return;
+        const dx = event.clientX - active.lastX;
+        const dy = event.clientY - active.lastY;
+        if (Math.hypot(event.clientX - active.startX, event.clientY - active.startY) > 5) {
+            active.moved = true;
+            if (active.marker) active.marker.dataset.mapDragged = "1";
+        }
+        if (active.moved) {
+            applyMapGesturePan(dx, dy);
+            if (!mapGestureNotified) { notifyUserMapGesture(); mapGestureNotified = true; }
+        }
+        active.lastX = event.clientX;
+        active.lastY = event.clientY;
+        if (event.cancelable) event.preventDefault();
+    }
+
+    function onMapGesturePointerEnd(event) {
+        const active = mapGesturePointers.get(event.pointerId);
+        if (!active) return;
+        if (active.marker && active.moved) active.marker.dataset.mapDragged = "1";
+        mapGesturePointers.delete(event.pointerId);
+        if (mapGesturePointers.size >= 2) {
+            const points = Array.from(mapGesturePointers.values()).slice(0, 2);
+            mapGestureLastDistance = mapGestureDistance(points[0], points[1]);
+            mapGestureLastMidpoint = mapGestureMidpoint(points[0], points[1]);
+            mapGestureMode = "pinch";
+        } else if (mapGesturePointers.size === 1) {
+            const remaining = Array.from(mapGesturePointers.values())[0];
+            remaining.lastX = remaining.x;
+            remaining.lastY = remaining.y;
+            remaining.startX = remaining.x;
+            remaining.startY = remaining.y;
+            mapGestureMode = "pan";
+            mapGestureLastDistance = 0;
+            mapGestureLastMidpoint = null;
+        } else {
+            mapGestureMode = "idle";
+            mapGestureLastDistance = 0;
+            mapGestureLastMidpoint = null;
+        }
+    }
+
+    function onMapGestureWheel(event) {
+        if (!mapLibreMap || !getMapGestureSurface(event.target)) return;
+        if (event.cancelable) event.preventDefault();
+        let delta = event.deltaY;
+        if (event.deltaMode === 1) delta *= 16;
+        else if (event.deltaMode === 2) delta *= Math.max(240, document.getElementById("map")?.clientHeight || 800);
+        const zoomDelta = -delta / 450;
+        if (!Number.isFinite(zoomDelta) || Math.abs(zoomDelta) < 0.001) return;
+        const rect = document.getElementById("map")?.getBoundingClientRect();
+        if (!rect) return;
+        const around = mapLibreMap.unproject([event.clientX - rect.left, event.clientY - rect.top]);
+        const nextZoom = clampGestureZoom(mapLibreMap.getZoom() + zoomDelta);
+        try { mapLibreMap.zoomTo(nextZoom, { around, duration: 0, animate: false }); } catch (_) {}
+        notifyUserMapGesture();
+    }
+
+    function installMapGestureController() {
+        if (mapGestureControllerInstalled) return;
+        const root = document.getElementById("map");
+        if (!root) return;
+        mapGestureControllerInstalled = true;
+        root.style.touchAction = "none";
+        root.addEventListener("pointerdown", onMapGesturePointerDown, { capture: true, passive: false });
+        root.addEventListener("pointermove", onMapGesturePointerMove, { capture: true, passive: false });
+        root.addEventListener("pointerup", onMapGesturePointerEnd, { capture: true, passive: true });
+        root.addEventListener("pointercancel", onMapGesturePointerEnd, { capture: true, passive: true });
+        root.addEventListener("lostpointercapture", onMapGesturePointerEnd, { capture: true, passive: true });
+        root.addEventListener("wheel", onMapGestureWheel, { capture: true, passive: false });
     }
 
     function solveLinearSystem(matrix, vector) {
@@ -268,40 +461,7 @@
         if (sourceIcon.title) element.title = sourceIcon.title;
         if (sourceIcon.getAttribute("aria-label")) element.setAttribute("aria-label", sourceIcon.getAttribute("aria-label"));
 
-        // Pin taps select a spot, but a drag that starts on a pin must still move
-        // the underlying map. The marker overlay is a sibling of the MapLibre
-        // canvas, so forward only an actual drag to MapLibre; a short tap remains
-        // an ordinary marker click.
-        let markerPointer = null;
-        let markerDragMoved = false;
-        element.style.touchAction = "none";
-        element.addEventListener("pointerdown", (event) => {
-            if (event.button !== undefined && event.button !== 0) return;
-            markerPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY };
-            markerDragMoved = false;
-            try { element.setPointerCapture(event.pointerId); } catch (_) {}
-        }, { passive: true });
-        element.addEventListener("pointermove", (event) => {
-            if (!markerPointer || markerPointer.id !== event.pointerId || !mapLibreMap) return;
-            const dx = event.clientX - markerPointer.lastX;
-            const dy = event.clientY - markerPointer.lastY;
-            const total = Math.hypot(event.clientX - markerPointer.x, event.clientY - markerPointer.y);
-            if (total > 7) markerDragMoved = true;
-            if (markerDragMoved && (dx || dy)) {
-                try { mapLibreMap.panBy([dx, dy], { duration: 0 }); } catch (_) {}
-                markerPointer.lastX = event.clientX;
-                markerPointer.lastY = event.clientY;
-                event.preventDefault();
-            }
-        }, { passive: false });
-        const finishMarkerPointer = (event) => {
-            if (markerPointer && (event.pointerId === undefined || markerPointer.id === event.pointerId)) {
-                if (markerDragMoved) element.dataset.mapDragged = "1";
-                markerPointer = null;
-            }
-        };
-        element.addEventListener("pointerup", finishMarkerPointer, { passive: true });
-        element.addEventListener("pointercancel", finishMarkerPointer, { passive: true });
+        // Gesture handling is centralized on #map. This proxy only owns spot selection.
         element.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -916,15 +1076,12 @@
     function enableFreeMapMovement() {
         if (!mapLibreMap) return;
         try { mapLibreMap.setMaxBounds(null); } catch (_) {}
-        // MapLibre標準のジェスチャー処理に統一する。
-        // 独自pointerハンドラーはタッチイベントを奪い、スマホでパンを阻害するため使わない。
-        try { mapLibreMap.dragPan?.enable?.(); } catch (_) {}
-        try { mapLibreMap.scrollZoom?.enable?.(); } catch (_) {}
-        try { mapLibreMap.doubleClickZoom?.enable?.(); } catch (_) {}
-        try { mapLibreMap.touchZoomRotate?.enable?.(); } catch (_) {}
-        // Wheel zoom should work without requiring Ctrl/Command on desktop.
-        try { mapLibreMap.scrollZoom?.setWheelZoomRate?.(1 / 450); } catch (_) {}
-        try { mapLibreMap.touchZoomRotate?.disableRotation?.(); } catch (_) {}
+        // Native MapLibre gestures are disabled to avoid competing with Leaflet's
+        // overlay tree. installMapGestureController() handles mouse, touch and pinch.
+        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
+        try { mapLibreMap.scrollZoom?.disable?.(); } catch (_) {}
+        try { mapLibreMap.doubleClickZoom?.disable?.(); } catch (_) {}
+        try { mapLibreMap.touchZoomRotate?.disable?.(); } catch (_) {}
         try { mapLibreMap.touchPitch?.disable?.(); } catch (_) {}
         try { mapLibreMap.dragRotate?.disable?.(); } catch (_) {}
         try { mapLibreMap.keyboard?.disableRotation?.(); } catch (_) {}
@@ -947,6 +1104,7 @@
     function createMap() {
         const container = document.getElementById("maplibreBase");
         if (!container) return null;
+        installMapGestureController();
         // MapLibre's canvas is absolutely positioned, so its host needs an explicit
         // full-map size; without this the canvas can initialize at zero height.
         container.style.position = "absolute";
