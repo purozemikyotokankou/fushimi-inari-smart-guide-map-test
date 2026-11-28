@@ -181,4 +181,80 @@
             if (Number.isFinite(length)) state.stepLengthMeters = Math.max(0.45, Math.min(0.95, length));
         }
     };
+
+    // V208: Start MapLibre automatically when planner.js creates its Leaflet map.
+    // The previous page loaded the MapLibre engine but never called createMap(),
+    // leaving #maplibreBase empty until a user ran the method manually in DevTools.
+    function installMapEngineAutoStart() {
+        const leaflet = window.L;
+        const engine = window.FushimiMapEngine;
+
+        if (!leaflet || typeof leaflet.map !== "function" || !engine ||
+            typeof engine.createMap !== "function" || typeof engine.bindLeaflet !== "function") {
+            // Deferred scripts normally make these available before this module,
+            // but retain a one-shot fallback for unusual loading conditions.
+            window.addEventListener("DOMContentLoaded", installMapEngineAutoStart, { once: true });
+            return;
+        }
+
+        if (leaflet.map.__fushimiMapEngineAutoStart === true) return;
+
+        const originalMapFactory = leaflet.map;
+        function wrappedMapFactory() {
+            const args = arguments;
+            const leafletMap = originalMapFactory.apply(this, args);
+            const target = typeof args[0] === "string"
+                ? document.getElementById(args[0])
+                : args[0];
+
+            // This hook is only for the planner's main map; other Leaflet maps
+            // remain untouched.
+            if (!target || target.id !== "map") return leafletMap;
+
+            const startMapLibre = function () {
+                try {
+                    const mapLibreMap = engine.getMap?.() || engine.createMap();
+                    if (!mapLibreMap) {
+                        console.error("[Fushimi Map] Automatic MapLibre startup failed; Leaflet fallback remains available.");
+                        return;
+                    }
+
+                    const bound = engine.bindLeaflet(leafletMap);
+                    if (!bound) {
+                        console.error("[Fushimi Map] MapLibre was created, but Leaflet overlay binding failed.");
+                        return;
+                    }
+
+                    // This class activates the existing V183+ CSS that hides
+                    // the old raster tile pane and displays the MapLibre canvas.
+                    target.classList.add("maplibre-active");
+                    engine.resize?.();
+                    leafletMap.invalidateSize?.({ pan: false });
+
+                    console.info("[Fushimi Map] MapLibre automatically created and connected to Leaflet.");
+                    window.dispatchEvent(new CustomEvent("fushimi:map-engine-ready", {
+                        detail: { map: mapLibreMap, leafletMap }
+                    }));
+                } catch (error) {
+                    console.error("[Fushimi Map] Automatic map startup failed:", error);
+                }
+            };
+
+            // Run after planner.js finishes its chained L.map(...).setView(...)
+            // call, so both map engines begin from the same initial coordinates.
+            if (typeof queueMicrotask === "function") {
+                queueMicrotask(startMapLibre);
+            } else {
+                Promise.resolve().then(startMapLibre);
+            }
+
+            return leafletMap;
+        }
+
+        wrappedMapFactory.__fushimiMapEngineAutoStart = true;
+        wrappedMapFactory.__fushimiOriginalFactory = originalMapFactory;
+        leaflet.map = wrappedMapFactory;
+    }
+
+    installMapEngineAutoStart();
 })();
