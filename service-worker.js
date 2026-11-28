@@ -1,7 +1,7 @@
-/* Fushimi Inari Smart Guide — offline support (v198 ZOOM + GPS SENSOR FALLBACK) */
+/* Fushimi Inari Smart Guide — offline support (v199 ZOOM + GPS SENSOR FALLBACK) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v198';
+const CACHE_NAME = 'fushimi-smart-guide-v200';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
 const WORKER_VERSION = 198;
 const VIDEO_PATH = '/videos/fushimi.mp4';

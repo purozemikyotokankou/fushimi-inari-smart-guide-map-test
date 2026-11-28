@@ -1,5 +1,5 @@
 /* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v191 manual map pan + torii tunnel loading)
- * MapLibre owns the base-map camera (pan / zoom; pitch and bearing stay fixed).
+ * MapLibre owns the base-map camera (native drag / wheel / pinch; pitch and bearing stay fixed).
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
  * original Leaflet marker nodes remain hidden to prevent duplicate paint trails.
@@ -13,7 +13,7 @@
     const LEAFLET_ZOOM_OFFSET = 1;
     // Leaflet-facing zoom 22 maps to MapLibre zoom 21 (the same scale offset used
     // for marker projection). Native style/DEM tiles overzoom above their own maxzoom.
-    const MAX_LEAFLET_ZOOM = 22;
+    const MAX_LEAFLET_ZOOM = 24;
     const MAX_MAPLIBRE_ZOOM = MAX_LEAFLET_ZOOM - LEAFLET_ZOOM_OFFSET;
     const DEFAULT_ZOOM = 17;
     // 3D表示は常時ON。角度を固定し、表示切替時のカメラ移動をなくす。
@@ -44,8 +44,6 @@
     const MARKER_PROJECTION_LAYER_ID = "fushimi-marker-projection-reference";
     let markerProjectionMatrix = null;
     let statusHideTimer = 0;
-    let manualPanInstalled = false;
-    let manualPanGesture = null;
     let suppressClickUntil = 0;
 
     // Route geometry is rendered by MapLibre itself so it follows the DEM surface.
@@ -270,13 +268,47 @@
         if (sourceIcon.title) element.title = sourceIcon.title;
         if (sourceIcon.getAttribute("aria-label")) element.setAttribute("aria-label", sourceIcon.getAttribute("aria-label"));
 
-        const stopMapGesture = (event) => event.stopPropagation();
-        ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick"].forEach((type) => {
-            element.addEventListener(type, stopMapGesture, { passive: true });
-        });
+        // Pin taps select a spot, but a drag that starts on a pin must still move
+        // the underlying map. The marker overlay is a sibling of the MapLibre
+        // canvas, so forward only an actual drag to MapLibre; a short tap remains
+        // an ordinary marker click.
+        let markerPointer = null;
+        let markerDragMoved = false;
+        element.style.touchAction = "none";
+        element.addEventListener("pointerdown", (event) => {
+            if (event.button !== undefined && event.button !== 0) return;
+            markerPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY };
+            markerDragMoved = false;
+            try { element.setPointerCapture(event.pointerId); } catch (_) {}
+        }, { passive: true });
+        element.addEventListener("pointermove", (event) => {
+            if (!markerPointer || markerPointer.id !== event.pointerId || !mapLibreMap) return;
+            const dx = event.clientX - markerPointer.lastX;
+            const dy = event.clientY - markerPointer.lastY;
+            const total = Math.hypot(event.clientX - markerPointer.x, event.clientY - markerPointer.y);
+            if (total > 7) markerDragMoved = true;
+            if (markerDragMoved && (dx || dy)) {
+                try { mapLibreMap.panBy([dx, dy], { duration: 0 }); } catch (_) {}
+                markerPointer.lastX = event.clientX;
+                markerPointer.lastY = event.clientY;
+                event.preventDefault();
+            }
+        }, { passive: false });
+        const finishMarkerPointer = (event) => {
+            if (markerPointer && (event.pointerId === undefined || markerPointer.id === event.pointerId)) {
+                if (markerDragMoved) element.dataset.mapDragged = "1";
+                markerPointer = null;
+            }
+        };
+        element.addEventListener("pointerup", finishMarkerPointer, { passive: true });
+        element.addEventListener("pointercancel", finishMarkerPointer, { passive: true });
         element.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (element.dataset.mapDragged === "1") {
+                delete element.dataset.mapDragged;
+                return;
+            }
             if (layer.options?.interactive === false) return;
             layer.fire("click", { latlng: layer.getLatLng(), originalEvent: event });
         });
@@ -878,115 +910,20 @@
         }
     }
 
-    // MapLibreの標準ドラッグだけに依存せず、#map全体でドラッグを受ける。
-    // ピン上からドラッグした場合も地図を移動でき、短いタップだけをスポット選択に渡す。
-    function installManualMapPan() {
-        if (manualPanInstalled) return;
-        const root = document.getElementById("map");
-        if (!root || !mapLibreMap) return;
-        manualPanInstalled = true;
-
-        // パン操作はこのハンドラーに一本化し、MapLibre側の二重移動を防ぐ。
-        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
-        root.style.touchAction = "none";
-
-        const markerSelector = ".fushimi-marker-proxy";
-        const ignoredSelector = [
-            "button", "a", "input", "select", "textarea", "[role='button']",
-            ".map-spot-detail", ".planner-spot-panel", ".planner-top-actions",
-            ".map-search-popover", ".leaflet-popup", ".maplibre-status.is-error",
-            ".maplibre-camera-control", ".maplibre-terrain-button"
-        ].join(",");
-
-        root.addEventListener("pointerdown", function (event) {
-            if (!mapLibreMap || !mapLibreMap.isStyleLoaded?.()) return;
-            if (event.pointerType === "mouse" && event.button !== 0) return;
-            const target = event.target instanceof Element ? event.target : null;
-            if (!target) return;
-            const startedOnMarker = !!target.closest(markerSelector);
-            if (!startedOnMarker && target.closest(ignoredSelector)) return;
-
-            // 2本指操作はMapLibreのピンチズームに任せる。
-            if (manualPanGesture && event.pointerType === "touch") {
-                manualPanGesture = null;
-                return;
-            }
-            manualPanGesture = {
-                pointerId: event.pointerId,
-                pointerType: event.pointerType,
-                startX: event.clientX,
-                startY: event.clientY,
-                lastX: event.clientX,
-                lastY: event.clientY,
-                dragged: false
-            };
-        }, { capture: true, passive: true });
-
-        window.addEventListener("pointermove", function (event) {
-            const gesture = manualPanGesture;
-            if (!gesture || event.pointerId !== gesture.pointerId || !mapLibreMap) return;
-            const totalX = event.clientX - gesture.startX;
-            const totalY = event.clientY - gesture.startY;
-            if (!gesture.dragged && Math.hypot(totalX, totalY) < 5) return;
-
-            if (!gesture.dragged) {
-                gesture.dragged = true;
-                try { mapLibreMap.stop(); } catch (_) {}
-                document.getElementById("map")?.classList.add("is-camera-moving", "is-manual-map-dragging");
-                notifyUserMapGesture();
-            }
-
-            const dx = event.clientX - gesture.lastX;
-            const dy = event.clientY - gesture.lastY;
-            gesture.lastX = event.clientX;
-            gesture.lastY = event.clientY;
-            if (dx || dy) {
-                try {
-                    // 指・マウスの移動方向へ地図面がついてくるよう、カメラを逆方向へパン。
-                    mapLibreMap.panBy([-dx, -dy], { duration: 0 });
-                } catch (error) {
-                    console.warn("[Fushimi Map] Manual pan fallback failed:", error);
-                }
-            }
-            if (event.cancelable) event.preventDefault();
-            event.stopPropagation();
-        }, { capture: true, passive: false });
-
-        const finishGesture = function (event) {
-            const gesture = manualPanGesture;
-            if (!gesture || event.pointerId !== gesture.pointerId) return;
-            if (gesture.dragged) {
-                // ドラッグ直後に疑似クリックが発生して、誤ってピンを選択するのを防ぐ。
-                suppressClickUntil = performance.now() + 120;
-                const rootNode = document.getElementById("map");
-                rootNode?.classList.remove("is-manual-map-dragging");
-                window.setTimeout(() => rootNode?.classList.remove("is-camera-moving"), 90);
-            }
-            manualPanGesture = null;
-        };
-        window.addEventListener("pointerup", finishGesture, { capture: true, passive: true });
-        window.addEventListener("pointercancel", finishGesture, { capture: true, passive: true });
-
-        root.addEventListener("click", function (event) {
-            if (performance.now() > suppressClickUntil) return;
-            suppressClickUntil = 0;
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-        }, true);
-    }
-
     // MapLibreの地図操作を常時有効にする。
     // 地図の表示範囲を固定せず、パン・ズームはユーザーに任せる。
     // 3Dの初期角度(54度)と北向きは維持する。
     function enableFreeMapMovement() {
         if (!mapLibreMap) return;
         try { mapLibreMap.setMaxBounds(null); } catch (_) {}
-        // ドラッグ移動はinstallManualMapPan()で統一。標準dragPanとの二重移動を防止。
-        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
+        // MapLibre標準のジェスチャー処理に統一する。
+        // 独自pointerハンドラーはタッチイベントを奪い、スマホでパンを阻害するため使わない。
+        try { mapLibreMap.dragPan?.enable?.(); } catch (_) {}
         try { mapLibreMap.scrollZoom?.enable?.(); } catch (_) {}
         try { mapLibreMap.doubleClickZoom?.enable?.(); } catch (_) {}
         try { mapLibreMap.touchZoomRotate?.enable?.(); } catch (_) {}
+        // Wheel zoom should work without requiring Ctrl/Command on desktop.
+        try { mapLibreMap.scrollZoom?.setWheelZoomRate?.(1 / 450); } catch (_) {}
         try { mapLibreMap.touchZoomRotate?.disableRotation?.(); } catch (_) {}
         try { mapLibreMap.touchPitch?.disable?.(); } catch (_) {}
         try { mapLibreMap.dragRotate?.disable?.(); } catch (_) {}
@@ -1094,7 +1031,6 @@
                 cancelPendingTileRequestsWhileZooming: true
             });
             enableFreeMapMovement();
-            installManualMapPan();
 
             function handleMapStyleReady() {
                 if (!mapLibreMap || !mapLibreMap.isStyleLoaded()) return;

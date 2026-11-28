@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#f5f5f7">
     <title>伏見稲荷スマートガイド</title>
-    <!-- V198: direct map zoom controls, optional sensor fallback, station timetable fixes. -->
+    <!-- V200: native MapLibre gestures; GPS-only navigation without sensor permission prompts. -->
 
     <link rel="stylesheet" href="css/style.css">
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link rel="dns-prefetch" href="//tiles.openfreemap.org">
-    <link rel="stylesheet" href="css/planner.css?v=198-zoom-fallback">
+    <link rel="stylesheet" href="css/planner.css?v=200-map-gestures">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style id="fushimi-adaptive-light-styles">
@@ -225,11 +225,6 @@
                         <span class="map-action-label">現在地</span>
                     </button>
                 </div>
-                <div class="planner-map-zoom-controls" role="group" aria-label="地図の拡大・縮小">
-                    <button type="button" id="mapZoomInBtn" class="planner-map-zoom-button" data-i18n-aria-label="mapZoomIn" data-i18n-title="mapZoomIn" aria-label="地図を拡大" title="地図を拡大">+</button>
-                    <button type="button" id="mapZoomOutBtn" class="planner-map-zoom-button" data-i18n-aria-label="mapZoomOut" data-i18n-title="mapZoomOut" aria-label="地図を縮小" title="地図を縮小">−</button>
-                </div>
-
                 <div class="planner-map-hint" aria-hidden="true">地図を動かしてスポットを探せます</div>
             </div>
         </section>
@@ -402,10 +397,9 @@
 
 <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="js/language.js?v=198-zoom-fallback" defer></script>
-<script src="js/map-engine-maplibre.js?v=198-zoom-fallback" defer></script>
-<script src="js/navigation-pdr.js?v=198-zoom-fallback" defer></script>
-<script src="js/planner.js?v=198-zoom-fallback" defer></script>
+<script src="js/language.js?v=200-map-gestures" defer></script>
+<script src="js/map-engine-maplibre.js?v=200-map-gestures" defer></script>
+<script src="js/planner.js?v=200-map-gestures" defer></script>
 <script src="js/planner-weather.js?v=138" defer></script>
 <script src="js/planner-ambient-light.js?v=138" defer></script>
 <script>
