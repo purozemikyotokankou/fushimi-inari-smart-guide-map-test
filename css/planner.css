@@ -7632,36 +7632,26 @@ body.planner-page .liquid-cursor {
   pointer-events: auto !important;
 }
 
-
-/* V202 — dedicated hit surface makes all map gestures land on one reliable layer. */
-#maplibreBase .maplibregl-canvas-container {
-  position: absolute !important;
-  inset: 0 !important;
+/* V203 — keep MapLibre's native canvas as the only blank-map gesture target. */
+#maplibreBase .maplibregl-canvas-container,
+#maplibreBase .maplibregl-canvas {
   pointer-events: auto !important;
   touch-action: none !important;
 }
-#maplibreBase .fushimi-map-gesture-surface {
-  position: absolute !important;
-  inset: 0 !important;
-  z-index: 1 !important;
-  display: block !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: transparent !important;
+#maplibreBase.is-maplibre-3d-ready .maplibregl-canvas-container {
+  opacity: 1 !important;
   pointer-events: auto !important;
-  touch-action: none !important;
-  cursor: grab;
-  -webkit-user-select: none;
-  user-select: none;
+  filter: none !important;
+  transform: none !important;
 }
 #maplibreBase .maplibregl-control-container {
-  position: absolute !important;
-  z-index: 2 !important;
   pointer-events: none !important;
 }
 #maplibreBase .maplibregl-control-container .maplibregl-ctrl {
   pointer-events: auto !important;
 }
-#map.is-manual-map-dragging,
-#map.is-manual-map-dragging .fushimi-map-gesture-surface,
-#map.is-manual-map-dragging .fushimi-marker-proxy { cursor: grabbing !important; }
+#map .fushimi-marker-overlay { pointer-events: none !important; }
+#map .fushimi-marker-overlay .fushimi-marker-proxy {
+  pointer-events: auto !important;
+  touch-action: none !important;
+}

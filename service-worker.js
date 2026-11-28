@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v202 centralized map gestures) */
+/* Fushimi Inari Smart Guide — offline support (v203 native MapLibre gestures) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v202';
+const CACHE_NAME = 'fushimi-smart-guide-v203';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 201;
+const WORKER_VERSION = 203;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',

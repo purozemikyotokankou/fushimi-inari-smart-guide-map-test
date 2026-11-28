@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v201 centralized map gestures)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v203 native MapLibre gestures)
  * MapLibre owns the base-map camera; one shared pointer/wheel controller handles drag and pinch.
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -122,7 +122,6 @@
     // a MapLibre canvas, and a separate projected-pin overlay; allowing both
     // engines to process the same pointer caused dead/competing drag gestures.
     let mapGestureControllerInstalled = false;
-    let mapGestureSurfaceElement = null;
     const mapGesturePointers = new Map();
     let mapGestureMode = "idle";
     let mapGestureLastDistance = 0;
@@ -133,37 +132,26 @@
         const element = target instanceof Element ? target : target?.parentElement;
         if (!element) return null;
 
-        // Test marker proxies BEFORE generic button detection. The custom SVG pins
-        // may carry role="button"; they must remain draggable map surfaces.
+        // The visible pins are a separate Leaflet-projected overlay above MapLibre.
+        // Only pin-originated gestures are handled here. Blank-map drag/pinch/wheel
+        // events must reach MapLibre's own canvas handlers without interception.
         const marker = element.closest(".fushimi-marker-proxy");
         if (marker && marker.getAttribute("aria-hidden") !== "true" &&
             getComputedStyle(marker).pointerEvents !== "none") return marker;
-
-        if (element.closest("button, a, input, select, textarea, [role='button'], .maplibregl-ctrl, .maplibre-status")) return null;
-        if (mapGestureSurfaceElement && (element === mapGestureSurfaceElement || mapGestureSurfaceElement.contains(element))) {
-            return mapGestureSurfaceElement;
-        }
-        const base = element.closest("#maplibreBase");
-        if (base && !element.closest(".maplibregl-control-container")) return base;
         return null;
     }
 
-    function ensureMapGestureSurface() {
-        if (!mapLibreMap) return null;
-        const canvasContainer = mapLibreMap.getCanvasContainer?.();
-        if (!canvasContainer) return null;
-        if (mapGestureSurfaceElement && mapGestureSurfaceElement.parentElement !== canvasContainer) {
-            mapGestureSurfaceElement.remove();
-            mapGestureSurfaceElement = null;
-        }
-        if (!mapGestureSurfaceElement) {
-            mapGestureSurfaceElement = document.createElement("div");
-            mapGestureSurfaceElement.className = "fushimi-map-gesture-surface";
-            mapGestureSurfaceElement.setAttribute("aria-hidden", "true");
-            mapGestureSurfaceElement.setAttribute("role", "presentation");
-            canvasContainer.appendChild(mapGestureSurfaceElement);
-        }
-        return mapGestureSurfaceElement;
+    function setNativeMapGesturesEnabled(enabled) {
+        if (!mapLibreMap) return;
+        const method = enabled ? "enable" : "disable";
+        try { mapLibreMap.dragPan?.[method]?.(); } catch (_) {}
+        try { mapLibreMap.scrollZoom?.[method]?.(); } catch (_) {}
+        try { mapLibreMap.doubleClickZoom?.[method]?.(); } catch (_) {}
+        try { mapLibreMap.touchZoomRotate?.[method]?.(); } catch (_) {}
+        try { mapLibreMap.touchZoomRotate?.disableRotation?.(); } catch (_) {}
+        try { mapLibreMap.touchPitch?.disable?.(); } catch (_) {}
+        try { mapLibreMap.dragRotate?.disable?.(); } catch (_) {}
+        try { mapLibreMap.keyboard?.disableRotation?.(); } catch (_) {}
     }
 
     function clampGestureZoom(zoom) {
@@ -194,10 +182,14 @@
     function onMapGesturePointerDown(event) {
         if (!mapLibreMap || (event.pointerType === "mouse" && event.button !== 0)) return;
         const surface = getMapGestureSurface(event.target);
-        if (!surface) return;
+        const pinGestureAlreadyActive = Array.from(mapGesturePointers.values()).some((item) => !!item.marker);
+        if (!surface && !pinGestureAlreadyActive) return;
 
         const point = mapGesturePoint(event);
-        const marker = surface.classList?.contains("fushimi-marker-proxy") ? surface : null;
+        const marker = surface?.classList?.contains("fushimi-marker-proxy") ? surface : null;
+        // A pin is outside MapLibre's canvas, so briefly route this pointer sequence
+        // through the bridge. Normal blank-map gestures remain fully native.
+        setNativeMapGesturesEnabled(false);
         document.getElementById("map")?.classList.add("is-manual-map-dragging");
         mapGesturePointers.set(event.pointerId, {
             x: point.x, y: point.y,
@@ -311,6 +303,7 @@
             mapGestureLastDistance = 0;
             mapGestureLastMidpoint = null;
             document.getElementById("map")?.classList.remove("is-manual-map-dragging");
+            enableFreeMapMovement();
         }
     }
 
@@ -1110,15 +1103,10 @@
     function enableFreeMapMovement() {
         if (!mapLibreMap) return;
         try { mapLibreMap.setMaxBounds(null); } catch (_) {}
-        // Native MapLibre gestures are disabled to avoid competing with Leaflet's
-        // overlay tree. installMapGestureController() handles mouse, touch and pinch.
-        try { mapLibreMap.dragPan?.disable?.(); } catch (_) {}
-        try { mapLibreMap.scrollZoom?.disable?.(); } catch (_) {}
-        try { mapLibreMap.doubleClickZoom?.disable?.(); } catch (_) {}
-        try { mapLibreMap.touchZoomRotate?.disable?.(); } catch (_) {}
-        try { mapLibreMap.touchPitch?.disable?.(); } catch (_) {}
-        try { mapLibreMap.dragRotate?.disable?.(); } catch (_) {}
-        try { mapLibreMap.keyboard?.disableRotation?.(); } catch (_) {}
+        // MapLibre owns the base-map gestures. Leaflet's handlers are separately
+        // disabled in bindLeaflet(); never turn MapLibre's native handlers off here.
+        setNativeMapGesturesEnabled(true);
+        try { mapLibreMap.scrollZoom?.setWheelZoomRate?.(1 / 450); } catch (_) {}
 
         const root = mapLibreMap.getContainer?.();
         const canvasContainer = mapLibreMap.getCanvasContainer?.();
@@ -1127,7 +1115,6 @@
         if (canvasContainer) {
             canvasContainer.style.pointerEvents = "auto";
             canvasContainer.style.touchAction = "none";
-            ensureMapGestureSurface();
         }
         if (canvas) {
             canvas.style.pointerEvents = "auto";
@@ -1223,7 +1210,6 @@
                 fadeDuration: 0,
                 cancelPendingTileRequestsWhileZooming: true
             });
-            ensureMapGestureSurface();
             enableFreeMapMovement();
 
             function handleMapStyleReady() {
