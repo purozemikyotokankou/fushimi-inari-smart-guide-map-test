@@ -21,7 +21,7 @@
     // 3D標高は表示位置に応じて必要なタイルを読み込む。
     // Terrainとhillshadeは別ソースにし、MapLibre推奨の描画品質を保つ。
     const HILLSHADE_SOURCE_ID = "fushimi-terrain-hillshade-dem";
-    const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Mapzen / AWS Terrain Tiles</a>';
+    const TERRAIN_ATTRIBUTION = 'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener noreferrer">Mapzen Terrain Tiles on AWS</a> · Global SRTM / GMTED2010 terrain data courtesy of the <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">U.S. Geological Survey</a>';
 
     let mapLibreMap = null;
     let leafletMap = null;
@@ -1062,7 +1062,9 @@
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
-                maxZoom: 18 - LEAFLET_ZOOM_OFFSET,
+                // Pin selection is dense around the shrine. Allow a closer camera;
+                // OpenFreeMap/DEM tiles may be over-zoomed beyond their native levels.
+                maxZoom: 20 - LEAFLET_ZOOM_OFFSET,
                 // 地図の移動範囲は固定しない。地形DEMにもboundsを設けない。
                 maxBounds: null,
                 dragPan: true,

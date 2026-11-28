@@ -7464,3 +7464,132 @@ body.planner-page .liquid-cursor {
     filter: none;
     transform: none;
 }
+
+
+/* V195 — improved navigation hierarchy, sensor status and official crowd links. */
+.planner-v11-nav-card {
+    max-height: min(40vh, 340px) !important;
+    overflow-y: auto !important;
+    padding: 13px 15px !important;
+    border: 1px solid rgba(255,255,255,.82) !important;
+    background: rgba(249,250,249,.91) !important;
+    box-shadow: 0 12px 34px rgba(19,29,24,.22), inset 0 1px 0 rgba(255,255,255,.96) !important;
+    backdrop-filter: blur(22px) saturate(1.3) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(1.3) !important;
+}
+.planner-v11-nav-top { display:flex !important; align-items:center !important; justify-content:space-between !important; gap:8px !important; }
+.planner-v11-nav-status { font-weight:800 !important; }
+.planner-v11-maneuver { display:grid !important; grid-template-columns:42px minmax(0,1fr) !important; align-items:center !important; gap:10px !important; }
+.planner-v11-maneuver-copy { min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:3px; }
+.planner-v11-maneuver-icon { display:grid; place-items:center; width:42px; height:42px; border-radius:14px; background:rgba(196,0,24,.10); color:#bd1f24; font-size:29px; line-height:1; font-weight:900; }
+.planner-v11-maneuver[data-direction="offroute"] .planner-v11-maneuver-icon { background:#b00020; color:#fff; }
+.planner-v11-maneuver[data-direction="arrived"] .planner-v11-maneuver-icon { background:#167c4b; color:#fff; }
+.planner-v11-nav-title { margin:6px 0 0 !important; font-size:16px !important; font-weight:850 !important; }
+.planner-v11-nav-meta { display:flex !important; flex-wrap:wrap !important; gap:6px !important; }
+.planner-v11-nav-chip { padding:6px 9px !important; border-radius:999px !important; background:rgba(35,48,40,.07) !important; font-weight:750 !important; }
+.planner-v11-nav-actions { display:flex !important; flex-wrap:wrap !important; gap:7px !important; }
+.planner-v11-nav-actions .planner-v11-button { min-height:40px !important; padding:8px 11px !important; border-radius:12px !important; font-size:11px !important; }
+.planner-v11-pdr-button { border:1px solid rgba(36,90,133,.22) !important; background:rgba(52,116,166,.08) !important; color:#245a85 !important; }
+.planner-v11-pdr-button.is-active { background:rgba(31,122,80,.13) !important; border-color:rgba(31,122,80,.34) !important; color:#17643f !important; }
+.planner-v11-reroute-button { background:#b20c22 !important; color:#fff !important; border-color:#b20c22 !important; }
+.planner-v11-reroute-button:disabled { opacity:.55 !important; }
+#plannerV11RerouteButton[hidden], #plannerV11FollowButton[hidden], #plannerV11Maneuver[hidden] { display:none !important; }
+@media (max-width:820px) {
+    .planner-v11-map-panel { left:7px !important; right:7px !important; bottom:calc(105px + env(safe-area-inset-bottom)) !important; }
+    .planner-v11-nav-card { width:100% !important; max-height:min(43vh,360px) !important; padding:10px 11px !important; border-radius:19px !important; }
+    .planner-v11-nav-actions .planner-v11-button { min-height:38px !important; font-size:10px !important; }
+}
+.map-crowd-action .map-action-icon { color:#a43a24 !important; background:rgba(220,83,44,.10) !important; }
+.crowd-info-dialog[hidden] { display:none !important; }
+.crowd-info-dialog-panel { display:flex; flex-direction:column; gap:12px; }
+.crowd-info-lead { margin:0; color:#555e57; font-size:13px; line-height:1.6; }
+.crowd-info-link { display:grid; grid-template-columns:38px minmax(0,1fr) 18px; align-items:center; gap:11px; padding:13px; border:1px solid rgba(46,63,49,.10); border-radius:15px; background:rgba(246,248,245,.92); color:#253028 !important; text-decoration:none !important; }
+.crowd-info-link strong { display:block; font-size:13px; font-weight:850; line-height:1.35; }
+.crowd-info-link small { display:block; margin-top:4px; color:#667067; font-size:11px; line-height:1.45; }
+.crowd-info-link-icon { display:grid; place-items:center; width:36px; height:36px; border-radius:12px; background:rgba(196,0,24,.09); color:#b5232e; font-size:20px; font-weight:850; }
+.crowd-info-note { margin:0; padding:10px 12px; border-radius:12px; background:rgba(50,63,54,.055); color:#667068; font-size:10px; line-height:1.65; }
+@media (max-width:820px) { .crowd-info-dialog-panel { padding:16px !important; } .crowd-info-link { padding:11px; } }
+
+
+/* V196 — map data credits: accessible, expandable and kept clear of the bottom sheet. */
+.planner-data-credits {
+  position: absolute;
+  z-index: 1650;
+  left: 12px;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  max-width: min(360px, calc(100vw - 24px));
+  color: #39443e;
+  font: 650 10px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  pointer-events: auto;
+}
+.planner-weather-credit {
+  position: absolute;
+  z-index: 1650;
+  left: 103px;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,.9);
+  border-radius: 999px;
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 5px 16px rgba(25,35,29,.10);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  color: #315c83;
+  font: 650 9px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.planner-data-credits > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border: 1px solid rgba(255,255,255,.92);
+  border-radius: 999px;
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 5px 16px rgba(25,35,29,.12), inset 0 1px 0 rgba(255,255,255,.98);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  color: #4b5a50;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.planner-data-credits > summary::-webkit-details-marker { display: none; }
+.planner-data-credits > summary:focus-visible { outline: 2px solid #b83e36; outline-offset: 2px; }
+.planner-data-credits-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 7px);
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(48vh, 380px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,.94);
+  border-radius: 15px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 10px 28px rgba(20,30,24,.17), inset 0 1px 0 rgba(255,255,255,.98);
+  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.18);
+  color: #38443c;
+}
+.planner-data-credits-panel h2 { margin: 0 0 8px; font-size: 11px; line-height: 1.35; font-weight: 850; }
+.planner-data-credits-panel ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.planner-data-credits-panel li { font-size: 10px; line-height: 1.55; overflow-wrap: anywhere; }
+.planner-data-credits-panel a { color: #315c83; text-decoration: underline; text-underline-offset: 2px; }
+.planner-workspace.planner-sheet-expanded .planner-data-credits,
+.planner-workspace.planner-sheet-expanded .planner-weather-credit { opacity: 0; pointer-events: none; }
+@media (max-width: 580px) {
+  .planner-data-credits { left: 8px; bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .planner-weather-credit { left: 98px; bottom: calc(96px + env(safe-area-inset-bottom)); padding: 5px 7px; font-size: 8px; }
+  .planner-data-credits-panel { max-height: min(44vh, 320px); padding: 10px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .planner-data-credits, .planner-data-credits-panel { transition: none !important; } }

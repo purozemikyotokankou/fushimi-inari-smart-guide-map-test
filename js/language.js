@@ -13,6 +13,15 @@ const translations = {
 
     ja: {
 
+        mapSources: "データ出典",
+        mapSourcesTitle: "地図・データの出典",
+        mapSourceBase: "地図データ：",
+        mapSourceTerrain: "3D地形データ：",
+        mapSourceWeather: "天気・日の出／日の入り：",
+        mapSourceWeatherNote: "気象データを画面の環境色演出に利用しています。",
+        mapSourceRoutes: "一部の徒歩ルート計算：",
+        mapSourceFallback: "2D代替地図：",
+
         // 共通
         home: "ホーム",
         map: "観光マップ",
@@ -69,11 +78,28 @@ const translations = {
         routeInfo: "ルート情報",
         numberOfSpots: "スポット数",
         estimatedTime: "所要時間",
-        saveRoute: "ルートを保存"
+        saveRoute: "ルートを保存",
+        crowdInfo: "混雑情報",
+        crowdInfoTitle: "伏見稲荷周辺の混雑情報",
+        crowdInfoLead: "京都市が公開している公式情報を確認できます。",
+        crowdForecastTitle: "伏見エリアの観光快適度予測",
+        crowdForecastDescription: "伏見稲荷大社付近の時間帯別・5段階予測",
+        crowdLiveTitle: "京都観光デジタルマップ",
+        crowdLiveDescription: "AIを活用した観光地のリアルタイム混雑情報",
+        crowdInfoNote: "混雑予測は参道の各地点ごとの実測値ではありません。公開APIを確認できていないため、誤った混雑表示を作らず、公式マップを開く方式にしています。",
     },
 
 
     en: {
+
+        mapSources: "Data sources",
+        mapSourcesTitle: "Map and data sources",
+        mapSourceBase: "Basemap:",
+        mapSourceTerrain: "3D terrain:",
+        mapSourceWeather: "Weather and sunrise/sunset:",
+        mapSourceWeatherNote: "Weather data is used to adapt the map's ambient color effects.",
+        mapSourceRoutes: "Some walking-route calculations:",
+        mapSourceFallback: "2D fallback map:",
 
         // Common
         home: "Home",
@@ -131,11 +157,28 @@ const translations = {
         routeInfo: "Route Information",
         numberOfSpots: "Number of Spots",
         estimatedTime: "Estimated Time",
-        saveRoute: "Save Route"
+        saveRoute: "Save Route",
+        crowdInfo: "Crowd",
+        crowdInfoTitle: "Crowd information near Fushimi Inari",
+        crowdInfoLead: "Open official crowd information published by Kyoto City.",
+        crowdForecastTitle: "Fushimi area comfort forecast",
+        crowdForecastDescription: "Five-level, time-of-day forecast near Fushimi Inari Taisha",
+        crowdLiveTitle: "Kyoto Tourism Digital Map",
+        crowdLiveDescription: "AI-assisted real-time crowd information for tourist areas",
+        crowdInfoNote: "The forecast is area-level, not a live count for each path. No public read API for embedding the figures was verified, so this guide opens the official maps instead of inventing an in-app heatmap.",
     },
 
 
     zh: {
+
+        mapSources: "数据来源",
+        mapSourcesTitle: "地图与数据来源",
+        mapSourceBase: "基础地图：",
+        mapSourceTerrain: "3D地形：",
+        mapSourceWeather: "天气与日出／日落：",
+        mapSourceWeatherNote: "天气数据用于调整地图环境色彩效果。",
+        mapSourceRoutes: "部分步行路线计算：",
+        mapSourceFallback: "2D备用地图：",
 
         // 通用
         home: "首页",
@@ -193,11 +236,28 @@ const translations = {
         routeInfo: "路线信息",
         numberOfSpots: "景点数量",
         estimatedTime: "预计时间",
-        saveRoute: "保存路线"
+        saveRoute: "保存路线",
+        crowdInfo: "拥挤信息",
+        crowdInfoTitle: "伏见稻荷周边拥挤信息",
+        crowdInfoLead: "查看京都市发布的官方拥挤信息。",
+        crowdForecastTitle: "伏见地区观光舒适度预测",
+        crowdForecastDescription: "伏见稻荷大社附近按时段划分的五级预测",
+        crowdLiveTitle: "京都观光数字地图",
+        crowdLiveDescription: "利用AI提供景点实时拥挤信息",
+        crowdInfoNote: "此预测为区域级数据，并非每条参道的实时人数。尚未确认可用于嵌入数据的公开读取API，因此本指南链接至官方地图，不会虚构拥挤热力图。",
     },
 
 
     ko: {
+
+        mapSources: "데이터 출처",
+        mapSourcesTitle: "지도 및 데이터 출처",
+        mapSourceBase: "기본 지도:",
+        mapSourceTerrain: "3D 지형:",
+        mapSourceWeather: "날씨 및 일출／일몰:",
+        mapSourceWeatherNote: "날씨 데이터는 지도 주변 색상 효과를 조정하는 데 사용됩니다.",
+        mapSourceRoutes: "일부 도보 경로 계산:",
+        mapSourceFallback: "2D 대체 지도:",
 
         // 공통
         home: "홈",
@@ -255,7 +315,15 @@ const translations = {
         routeInfo: "루트 정보",
         numberOfSpots: "관광지 수",
         estimatedTime: "예상 소요 시간",
-        saveRoute: "루트 저장"
+        saveRoute: "루트 저장",
+        crowdInfo: "혼잡 정보",
+        crowdInfoTitle: "후시미 이나리 주변 혼잡 정보",
+        crowdInfoLead: "교토시가 공개한 공식 혼잡 정보를 확인할 수 있습니다.",
+        crowdForecastTitle: "후시미 지역 관광 쾌적도 예측",
+        crowdForecastDescription: "후시미 이나리 타이샤 주변 시간대별 5단계 예측",
+        crowdLiveTitle: "교토 관광 디지털 지도",
+        crowdLiveDescription: "AI를 활용한 관광지 실시간 혼잡 정보",
+        crowdInfoNote: "예측은 지역 단위이며 각 참배길의 실시간 인원수가 아닙니다. 임베드 가능한 공개 조회 API를 확인하지 못해 허위 혼잡 히트맵 대신 공식 지도를 연결합니다.",
     }
 
 };
