@@ -1,7 +1,7 @@
-/* Fushimi Inari Smart Guide — offline support (v201 centralized map gestures) */
+/* Fushimi Inari Smart Guide — offline support (v202 centralized map gestures) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v201';
+const CACHE_NAME = 'fushimi-smart-guide-v202';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
 const WORKER_VERSION = 201;
 const VIDEO_PATH = '/videos/fushimi.mp4';

@@ -122,6 +122,7 @@
     // a MapLibre canvas, and a separate projected-pin overlay; allowing both
     // engines to process the same pointer caused dead/competing drag gestures.
     let mapGestureControllerInstalled = false;
+    let mapGestureSurfaceElement = null;
     const mapGesturePointers = new Map();
     let mapGestureMode = "idle";
     let mapGestureLastDistance = 0;
@@ -131,12 +132,38 @@
     function getMapGestureSurface(target) {
         const element = target instanceof Element ? target : target?.parentElement;
         if (!element) return null;
-        if (element.closest("button, a, input, select, textarea, [role='button'], .maplibregl-ctrl, .maplibre-status")) return null;
+
+        // Test marker proxies BEFORE generic button detection. The custom SVG pins
+        // may carry role="button"; they must remain draggable map surfaces.
         const marker = element.closest(".fushimi-marker-proxy");
-        if (marker && marker.getAttribute("aria-hidden") !== "true" && marker.style.pointerEvents !== "none") return marker;
+        if (marker && marker.getAttribute("aria-hidden") !== "true" &&
+            getComputedStyle(marker).pointerEvents !== "none") return marker;
+
+        if (element.closest("button, a, input, select, textarea, [role='button'], .maplibregl-ctrl, .maplibre-status")) return null;
+        if (mapGestureSurfaceElement && (element === mapGestureSurfaceElement || mapGestureSurfaceElement.contains(element))) {
+            return mapGestureSurfaceElement;
+        }
         const base = element.closest("#maplibreBase");
         if (base && !element.closest(".maplibregl-control-container")) return base;
         return null;
+    }
+
+    function ensureMapGestureSurface() {
+        if (!mapLibreMap) return null;
+        const canvasContainer = mapLibreMap.getCanvasContainer?.();
+        if (!canvasContainer) return null;
+        if (mapGestureSurfaceElement && mapGestureSurfaceElement.parentElement !== canvasContainer) {
+            mapGestureSurfaceElement.remove();
+            mapGestureSurfaceElement = null;
+        }
+        if (!mapGestureSurfaceElement) {
+            mapGestureSurfaceElement = document.createElement("div");
+            mapGestureSurfaceElement.className = "fushimi-map-gesture-surface";
+            mapGestureSurfaceElement.setAttribute("aria-hidden", "true");
+            mapGestureSurfaceElement.setAttribute("role", "presentation");
+            canvasContainer.appendChild(mapGestureSurfaceElement);
+        }
+        return mapGestureSurfaceElement;
     }
 
     function clampGestureZoom(zoom) {
@@ -171,6 +198,7 @@
 
         const point = mapGesturePoint(event);
         const marker = surface.classList?.contains("fushimi-marker-proxy") ? surface : null;
+        document.getElementById("map")?.classList.add("is-manual-map-dragging");
         mapGesturePointers.set(event.pointerId, {
             x: point.x, y: point.y,
             lastX: point.x, lastY: point.y,
@@ -259,6 +287,11 @@
         if (!active) return;
         if (active.marker && active.moved) active.marker.dataset.mapDragged = "1";
         mapGesturePointers.delete(event.pointerId);
+        if (active.marker && active.moved) {
+            // Pointer capture can retarget the synthesized click to #map on some
+            // browsers; clear suppression shortly after the pointer sequence.
+            window.setTimeout(() => { if (active.marker?.dataset?.mapDragged === "1") delete active.marker.dataset.mapDragged; }, 350);
+        }
         if (mapGesturePointers.size >= 2) {
             const points = Array.from(mapGesturePointers.values()).slice(0, 2);
             mapGestureLastDistance = mapGestureDistance(points[0], points[1]);
@@ -277,6 +310,7 @@
             mapGestureMode = "idle";
             mapGestureLastDistance = 0;
             mapGestureLastMidpoint = null;
+            document.getElementById("map")?.classList.remove("is-manual-map-dragging");
         }
     }
 
@@ -1093,6 +1127,7 @@
         if (canvasContainer) {
             canvasContainer.style.pointerEvents = "auto";
             canvasContainer.style.touchAction = "none";
+            ensureMapGestureSurface();
         }
         if (canvas) {
             canvas.style.pointerEvents = "auto";
@@ -1188,6 +1223,7 @@
                 fadeDuration: 0,
                 cancelPendingTileRequestsWhileZooming: true
             });
+            ensureMapGestureSurface();
             enableFreeMapMovement();
 
             function handleMapStyleReady() {
