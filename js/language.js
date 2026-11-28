@@ -79,14 +79,8 @@ const translations = {
         numberOfSpots: "スポット数",
         estimatedTime: "所要時間",
         saveRoute: "ルートを保存",
-        crowdInfo: "混雑情報",
-        crowdInfoTitle: "伏見稲荷周辺の混雑情報",
-        crowdInfoLead: "京都市が公開している公式情報を確認できます。",
-        crowdForecastTitle: "伏見エリアの観光快適度予測",
-        crowdForecastDescription: "伏見稲荷大社付近の時間帯別・5段階予測",
-        crowdLiveTitle: "京都観光デジタルマップ",
-        crowdLiveDescription: "AIを活用した観光地のリアルタイム混雑情報",
-        crowdInfoNote: "混雑予測は参道の各地点ごとの実測値ではありません。公開APIを確認できていないため、誤った混雑表示を作らず、公式マップを開く方式にしています。",
+        mapZoomIn: "地図を拡大",
+        mapZoomOut: "地図を縮小",
     },
 
 
@@ -158,14 +152,8 @@ const translations = {
         numberOfSpots: "Number of Spots",
         estimatedTime: "Estimated Time",
         saveRoute: "Save Route",
-        crowdInfo: "Crowd",
-        crowdInfoTitle: "Crowd information near Fushimi Inari",
-        crowdInfoLead: "Open official crowd information published by Kyoto City.",
-        crowdForecastTitle: "Fushimi area comfort forecast",
-        crowdForecastDescription: "Five-level, time-of-day forecast near Fushimi Inari Taisha",
-        crowdLiveTitle: "Kyoto Tourism Digital Map",
-        crowdLiveDescription: "AI-assisted real-time crowd information for tourist areas",
-        crowdInfoNote: "The forecast is area-level, not a live count for each path. No public read API for embedding the figures was verified, so this guide opens the official maps instead of inventing an in-app heatmap.",
+        mapZoomIn: "Zoom in",
+        mapZoomOut: "Zoom out",
     },
 
 
@@ -237,14 +225,8 @@ const translations = {
         numberOfSpots: "景点数量",
         estimatedTime: "预计时间",
         saveRoute: "保存路线",
-        crowdInfo: "拥挤信息",
-        crowdInfoTitle: "伏见稻荷周边拥挤信息",
-        crowdInfoLead: "查看京都市发布的官方拥挤信息。",
-        crowdForecastTitle: "伏见地区观光舒适度预测",
-        crowdForecastDescription: "伏见稻荷大社附近按时段划分的五级预测",
-        crowdLiveTitle: "京都观光数字地图",
-        crowdLiveDescription: "利用AI提供景点实时拥挤信息",
-        crowdInfoNote: "此预测为区域级数据，并非每条参道的实时人数。尚未确认可用于嵌入数据的公开读取API，因此本指南链接至官方地图，不会虚构拥挤热力图。",
+        mapZoomIn: "放大地图",
+        mapZoomOut: "缩小地图",
     },
 
 
@@ -316,14 +298,8 @@ const translations = {
         numberOfSpots: "관광지 수",
         estimatedTime: "예상 소요 시간",
         saveRoute: "루트 저장",
-        crowdInfo: "혼잡 정보",
-        crowdInfoTitle: "후시미 이나리 주변 혼잡 정보",
-        crowdInfoLead: "교토시가 공개한 공식 혼잡 정보를 확인할 수 있습니다.",
-        crowdForecastTitle: "후시미 지역 관광 쾌적도 예측",
-        crowdForecastDescription: "후시미 이나리 타이샤 주변 시간대별 5단계 예측",
-        crowdLiveTitle: "교토 관광 디지털 지도",
-        crowdLiveDescription: "AI를 활용한 관광지 실시간 혼잡 정보",
-        crowdInfoNote: "예측은 지역 단위이며 각 참배길의 실시간 인원수가 아닙니다. 임베드 가능한 공개 조회 API를 확인하지 못해 허위 혼잡 히트맵 대신 공식 지도를 연결합니다.",
+        mapZoomIn: "지도 확대",
+        mapZoomOut: "지도 축소",
     }
 
 };
@@ -395,6 +371,14 @@ function applyLanguage() {
 
         element.placeholder = t(key);
 
+    });
+
+    // Accessible control labels and hover titles.
+    document.querySelectorAll("[data-i18n-aria-label]").forEach(function(element) {
+        element.setAttribute("aria-label", t(element.getAttribute("data-i18n-aria-label")));
+    });
+    document.querySelectorAll("[data-i18n-title]").forEach(function(element) {
+        element.setAttribute("title", t(element.getAttribute("data-i18n-title")));
     });
 
 

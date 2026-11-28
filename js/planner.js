@@ -391,7 +391,7 @@ document.addEventListener("DOMContentLoaded", function () {
             // Allow close inspection of dense pins. CARTO fallback tiles are
             // over-zoomed above z18; the MapLibre base can use its own max zoom.
             minZoom: 0,
-            maxZoom: 20,
+            maxZoom: 22,
             bounceAtZoomLimits: false,
             zoomSnap: 0.5,
             zoomDelta: 0.5
@@ -459,13 +459,36 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const cartoPositronLayer = L.tileLayer(CARTO_POSITRON_TILE_URL, {
         minZoom: 0,
-        maxZoom: 20,
+        maxZoom: 22,
         maxNativeZoom: 18,
         keepBuffer: 3,
         updateWhenIdle: false,
         updateWhenZooming: true,
         attribution: CARTO_ATTRIBUTION
     });
+
+    // Always-visible plus/minus controls call the active MapLibre camera directly.
+    // This also gives touch devices a reliable alternative to pinch gestures.
+    const mapZoomInButton = document.getElementById("mapZoomInBtn");
+    const mapZoomOutButton = document.getElementById("mapZoomOutBtn");
+    function applyMapZoom(delta) {
+        if (window.FushimiMapEngine && typeof window.FushimiMapEngine.zoomBy === "function") {
+            const changed = window.FushimiMapEngine.zoomBy(delta);
+            if (changed) return;
+        }
+        if (!mapLibreBridgeActive && map) {
+            const next = Math.max(0, Math.min(22, map.getZoom() + delta));
+            if (Math.abs(next - map.getZoom()) > 0.001) map.setZoom(next, { animate: true });
+        }
+    }
+    mapZoomInButton?.addEventListener("click", function (event) {
+        event.preventDefault(); event.stopPropagation(); applyMapZoom(1);
+    });
+    mapZoomOutButton?.addEventListener("click", function (event) {
+        event.preventDefault(); event.stopPropagation(); applyMapZoom(-1);
+    });
+
+
 
     let cartoTileErrorCount = 0;
     let cartoTileLoadCount = 0;
@@ -2670,15 +2693,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 <button
                     type="button"
-                    class="planner-v11-button planner-v11-pdr-button"
-                    id="plannerV11PdrButton"
-                    aria-pressed="false"
-                >
-                    歩行センサー補助を使う
-                </button>
-
-                <button
-                    type="button"
                     class="planner-v11-button"
                     id="plannerV11StopButton"
                 >
@@ -2748,7 +2762,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const navManeuverDistance = document.getElementById("plannerV11ManeuverDistance");
     const navFollowButton = document.getElementById("plannerV11FollowButton");
     const navRerouteButton = document.getElementById("plannerV11RerouteButton");
-    const navPdrButton = document.getElementById("plannerV11PdrButton");
 
     // ============================================================
     // アイコン
@@ -5578,26 +5591,6 @@ document.addEventListener("DOMContentLoaded", function () {
     map.on("movestart zoomstart resize", closeSpotQuickPalette);
     map.on("dragstart", disableNavigationFollowByGesture);
 
-    const crowdInfoButton = document.getElementById("openCrowdInfoBtn");
-    const crowdInfoDialog = document.getElementById("crowdInfoDialog");
-    const closeCrowdInfoButton = document.getElementById("closeCrowdInfoBtn");
-    function openCrowdInfo() {
-        if (!crowdInfoDialog) return;
-        crowdInfoDialog.hidden = false;
-        document.body.classList.add("has-open-dialog");
-    }
-    function closeCrowdInfo() {
-        if (!crowdInfoDialog) return;
-        crowdInfoDialog.hidden = true;
-        document.body.classList.remove("has-open-dialog");
-    }
-    crowdInfoButton?.addEventListener("click", openCrowdInfo);
-    closeCrowdInfoButton?.addEventListener("click", closeCrowdInfo);
-    crowdInfoDialog?.querySelector("[data-crowd-close]")?.addEventListener("click", closeCrowdInfo);
-    crowdInfoDialog?.addEventListener("click", function (event) {
-        if (event.target === crowdInfoDialog) closeCrowdInfo();
-    });
-
     navFollowButton?.addEventListener("click", function (event) {
         event.preventDefault();
         event.stopPropagation();
@@ -5616,26 +5609,10 @@ document.addEventListener("DOMContentLoaded", function () {
         return null;
     }
 
-    function syncNavigationPdrButton() {
-        if (!navPdrButton) return;
-        const labels = {
-            ja: navigationPdrEnabled ? "歩行センサー補助 ON" : "歩行センサー補助を使う",
-            en: navigationPdrEnabled ? "Walking sensor: ON" : "Use walking sensors",
-            zh: navigationPdrEnabled ? "步行传感器：开启" : "启用步行传感器",
-            ko: navigationPdrEnabled ? "보행 센서: 켜짐" : "보행 센서 사용"
-        };
-        navPdrButton.textContent = labels[getCurrentLanguage()] || labels.ja;
-        navPdrButton.setAttribute("aria-pressed", navigationPdrEnabled ? "true" : "false");
-        navPdrButton.classList.toggle("is-active", navigationPdrEnabled);
-    }
-
     function startNavigationPdr(seed = null) {
         if (!navigationPdrEnabled || !window.FushimiWalkingPDR) return false;
         const start = seed || getNavigationPdrSeed();
-        if (!start) {
-            if (navStatus) navStatus.textContent = "センサー推定には最初の現在地が必要です";
-            return false;
-        }
+        if (!start) return false;
         const started = window.FushimiWalkingPDR.start({
             lat: Number(start.lat),
             lng: Number(start.lng),
@@ -5643,7 +5620,6 @@ document.addEventListener("DOMContentLoaded", function () {
             heading: start.heading !== null && start.heading !== undefined && Number.isFinite(Number(start.heading)) ? Number(start.heading) : null
         });
         navigationPdrStarted = !!started;
-        if (navStatus && navigationPdrStarted) navStatus.textContent = "ナビ中 · GPS＋歩行センサー補助";
         return navigationPdrStarted;
     }
 
@@ -5652,32 +5628,8 @@ document.addEventListener("DOMContentLoaded", function () {
             window.FushimiWalkingPDR.stop();
         }
         navigationPdrStarted = false;
+        navigationPdrEnabled = false;
     }
-
-    navPdrButton?.addEventListener("click", async function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (navigationPdrEnabled) {
-            navigationPdrEnabled = false;
-            stopNavigationPdr();
-            syncNavigationPdrButton();
-            if (navigationActive && navStatus) navStatus.textContent = "ナビ中 · GPSで案内";
-            return;
-        }
-        if (!window.FushimiWalkingPDR) {
-            if (navStatus) navStatus.textContent = "歩行センサーに対応していないブラウザです";
-            return;
-        }
-        const permission = await window.FushimiWalkingPDR.requestPermission();
-        if (!permission?.granted) {
-            if (navStatus) navStatus.textContent = permission?.message || "センサーの使用が許可されませんでした";
-            return;
-        }
-        navigationPdrEnabled = true;
-        syncNavigationPdrButton();
-        if (navigationActive) startNavigationPdr();
-        else if (navStatus) navStatus.textContent = "センサー補助を準備しました。ナビ開始後に利用します";
-    });
 
     async function rerouteNavigationFromCurrentPosition() {
         if (navigationRerouting || !navigationActive || !navigationLegs.length) return;
@@ -5742,8 +5694,6 @@ document.addEventListener("DOMContentLoaded", function () {
         panNavigationToLocation(value);
         if (navStatus) navStatus.textContent = "ナビ中 · 歩行センサーによる推定位置";
     });
-
-    syncNavigationPdrButton();
     window.addEventListener("keydown", function (event) {
         if (event.key === "Escape") closeSpotQuickPalette();
     });
@@ -8983,32 +8933,41 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (navStartButton) {
-
-        navStartButton.addEventListener(
-            "click",
-            async function () {
-
-                if (
-                    !routeLine
-                ) {
-
-                    try {
-
-                        await createRoute();
-
-                    } catch (error) {
-
-                        console.error(
-                            error
-                        );
-
-                        return;
-                    }
+        navStartButton.addEventListener("click", async function () {
+            // Ask for optional sensor access synchronously in this tap handler.
+            // iOS Safari requires a direct user gesture for requestPermission().
+            // Browsers without these APIs simply continue with GPS; no warning button/message is shown.
+            let sensorPermissionTask = null;
+            const sensorApi = window.FushimiWalkingPDR;
+            if (sensorApi && typeof sensorApi.requestPermission === "function") {
+                try {
+                    sensorPermissionTask = Promise.resolve(sensorApi.requestPermission());
+                } catch (_) {
+                    sensorPermissionTask = null;
                 }
-
-                startNavigation();
             }
-        );
+
+            if (!routeLine) {
+                try {
+                    await createRoute();
+                } catch (error) {
+                    console.error(error);
+                    navigationPdrEnabled = false;
+                    return;
+                }
+            }
+
+            navigationPdrEnabled = false;
+            if (sensorPermissionTask) {
+                try {
+                    const permission = await sensorPermissionTask;
+                    navigationPdrEnabled = permission?.granted === true;
+                } catch (_) {
+                    navigationPdrEnabled = false;
+                }
+            }
+            startNavigation();
+        });
     }
 
     if (navStopButton) {
@@ -9059,9 +9018,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
                                 html:
                                     `
-                                        <div
-                                            class="planner-v11-current-location"
-                                        ></div>
+                                        <div class="planner-v11-current-location">
+                                            <span class="planner-v11-current-direction" aria-hidden="true"></span>
+                                        </div>
                                     `,
 
                                 iconSize:
@@ -9092,6 +9051,21 @@ document.addEventListener("DOMContentLoaded", function () {
                         : ""
                 }`
             );
+        }
+
+        // GPS course or PDR compass heading: show a small direction pointer on the
+        // current-position dot. The 3D map camera remains north-up to preserve its
+        // existing terrain/marker alignment.
+        const directionElement = currentLocationMarker?.getElement?.()?.querySelector(
+            ".planner-v11-current-location"
+        );
+        const headingValue = Number(value.heading);
+        const hasHeading = value.heading !== null && value.heading !== undefined &&
+            Number.isFinite(headingValue) && headingValue >= 0 && headingValue < 360;
+        if (directionElement) {
+            directionElement.classList.toggle("has-heading", hasHeading);
+            if (hasHeading) directionElement.style.setProperty("--current-heading", `${headingValue}deg`);
+            else directionElement.style.removeProperty("--current-heading");
         }
 
         if (centerMap

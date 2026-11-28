@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#f5f5f7">
     <title>伏見稲荷スマートガイド</title>
-    <!-- V195: 3D navigation, walking-sensor assist, crowd links and station timetable fixes. -->
+    <!-- V198: direct map zoom controls, optional sensor fallback, station timetable fixes. -->
 
     <link rel="stylesheet" href="css/style.css">
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link rel="dns-prefetch" href="//tiles.openfreemap.org">
-    <link rel="stylesheet" href="css/planner.css?v=196-attribution">
+    <link rel="stylesheet" href="css/planner.css?v=198-zoom-fallback">
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style id="fushimi-adaptive-light-styles">
@@ -211,10 +211,6 @@
                         <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.8L6 21Z"/></svg></span>
                         <span class="map-action-label" data-saved-ui="open">保存済み</span>
                     </button>
-                    <button type="button" id="openCrowdInfoBtn" class="map-action-tile map-crowd-action" aria-label="伏見稲荷周辺の混雑情報を開く" aria-controls="crowdInfoDialog">
-                        <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="8" cy="8" r="2.4"></circle><circle cx="16.5" cy="8.7" r="2"></circle><path d="M3.5 19v-1.2A4.5 4.5 0 0 1 8 13.3h.1a4.5 4.5 0 0 1 4.5 4.5V19M13.5 14.1a4 4 0 0 1 6.9 2.7V19"></path></svg></span>
-                        <span class="map-action-label" data-i18n="crowdInfo">混雑情報</span>
-                    </button>
                 </div>
                 <div class="map-search-popover" id="mapSearchPopover" hidden>
                     <label for="searchInput">スポットを検索</label>
@@ -228,6 +224,10 @@
                         <span class="map-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="2.2"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"></path></svg></span>
                         <span class="map-action-label">現在地</span>
                     </button>
+                </div>
+                <div class="planner-map-zoom-controls" role="group" aria-label="地図の拡大・縮小">
+                    <button type="button" id="mapZoomInBtn" class="planner-map-zoom-button" data-i18n-aria-label="mapZoomIn" data-i18n-title="mapZoomIn" aria-label="地図を拡大" title="地図を拡大">+</button>
+                    <button type="button" id="mapZoomOutBtn" class="planner-map-zoom-button" data-i18n-aria-label="mapZoomOut" data-i18n-title="mapZoomOut" aria-label="地図を縮小" title="地図を縮小">−</button>
                 </div>
 
                 <div class="planner-map-hint" aria-hidden="true">地図を動かしてスポットを探せます</div>
@@ -349,31 +349,6 @@
             <div id="mapSpotDetailContent" class="map-spot-detail-content"></div>
         </section>
 
-        <div id="crowdInfoDialog" class="spot-share-dialog crowd-info-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="crowdInfoTitle">
-            <button type="button" class="spot-share-backdrop" data-crowd-close aria-label="閉じる"></button>
-            <section class="spot-share-dialog-panel crowd-info-dialog-panel">
-                <header class="spot-share-dialog-header">
-                    <div>
-                        <p class="spot-share-eyebrow">OFFICIAL CROWD INFORMATION</p>
-                        <h2 id="crowdInfoTitle" data-i18n="crowdInfoTitle">伏見稲荷周辺の混雑情報</h2>
-                    </div>
-                    <button type="button" id="closeCrowdInfoBtn" class="spot-share-close" aria-label="閉じる">×</button>
-                </header>
-                <p class="crowd-info-lead" data-i18n="crowdInfoLead">京都市が公開している公式情報を確認できます。</p>
-                <a class="crowd-info-link" href="https://ja.kyoto.travel/comfort/fushimi/" target="_blank" rel="noopener noreferrer">
-                    <span class="crowd-info-link-icon" aria-hidden="true">◷</span>
-                    <span><strong data-i18n="crowdForecastTitle">伏見エリアの観光快適度予測</strong><small data-i18n="crowdForecastDescription">伏見稲荷大社付近の時間帯別・5段階予測</small></span>
-                    <span aria-hidden="true">↗</span>
-                </a>
-                <a class="crowd-info-link" href="https://platinumaps.jp/d/kyoto-smart-navi" target="_blank" rel="noopener noreferrer">
-                    <span class="crowd-info-link-icon" aria-hidden="true">◉</span>
-                    <span><strong data-i18n="crowdLiveTitle">京都観光デジタルマップ</strong><small data-i18n="crowdLiveDescription">AIを活用した観光地のリアルタイム混雑情報</small></span>
-                    <span aria-hidden="true">↗</span>
-                </a>
-                <p class="crowd-info-note" data-i18n="crowdInfoNote">混雑予測は参道の各地点ごとの実測値ではありません。データ連携用の公開APIを確認できていないため、誤った混雑表示を作らず、公式マップを開く方式にしています。</p>
-            </section>
-        </div>
-
         <div id="spotShareDialog" class="spot-share-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="spotShareTitle">
             <button type="button" class="spot-share-backdrop" data-share-close aria-label="閉じる"></button>
             <section class="spot-share-dialog-panel">
@@ -427,10 +402,10 @@
 
 <script src="https://unpkg.com/maplibre-gl@5.7.1/dist/maplibre-gl.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="js/language.js?v=196-attribution" defer></script>
-<script src="js/map-engine-maplibre.js?v=196-attribution" defer></script>
-<script src="js/navigation-pdr.js?v=195-walking-sensor" defer></script>
-<script src="js/planner.js?v=196-attribution" defer></script>
+<script src="js/language.js?v=198-zoom-fallback" defer></script>
+<script src="js/map-engine-maplibre.js?v=198-zoom-fallback" defer></script>
+<script src="js/navigation-pdr.js?v=198-zoom-fallback" defer></script>
+<script src="js/planner.js?v=198-zoom-fallback" defer></script>
 <script src="js/planner-weather.js?v=138" defer></script>
 <script src="js/planner-ambient-light.js?v=138" defer></script>
 <script>

@@ -11,6 +11,10 @@
     // 初回表示はトイレ③を中心にする（MapLibreの座標順は [経度, 緯度]）。
     const DEFAULT_CENTER = [135.777558305, 34.968021325]; // 新池とトイレ③の中点
     const LEAFLET_ZOOM_OFFSET = 1;
+    // Leaflet-facing zoom 22 maps to MapLibre zoom 21 (the same scale offset used
+    // for marker projection). Native style/DEM tiles overzoom above their own maxzoom.
+    const MAX_LEAFLET_ZOOM = 22;
+    const MAX_MAPLIBRE_ZOOM = MAX_LEAFLET_ZOOM - LEAFLET_ZOOM_OFFSET;
     const DEFAULT_ZOOM = 17;
     // 3D表示は常時ON。角度を固定し、表示切替時のカメラ移動をなくす。
     const FIXED_PITCH = 54;
@@ -1062,9 +1066,9 @@
                 center: DEFAULT_CENTER,
                 zoom: DEFAULT_ZOOM - LEAFLET_ZOOM_OFFSET,
                 minZoom: -1,
-                // Pin selection is dense around the shrine. Allow a closer camera;
-                // OpenFreeMap/DEM tiles may be over-zoomed beyond their native levels.
-                maxZoom: 20 - LEAFLET_ZOOM_OFFSET,
+                // Allow close inspection beyond the old limit. Source tiles are
+                // over-zoomed after their native maxzoom; map interaction remains available.
+                maxZoom: MAX_MAPLIBRE_ZOOM,
                 // 地図の移動範囲は固定しない。地形DEMにもboundsを設けない。
                 maxBounds: null,
                 dragPan: true,
@@ -1283,6 +1287,28 @@
         scheduleOverlayProjection();
     }
 
+    function zoomBy(delta) {
+        const amount = Number(delta);
+        if (!Number.isFinite(amount) || amount === 0) return false;
+        if (!mapLibreMap) {
+            if (!leafletMap) return false;
+            const next = Math.max(0, Math.min(MAX_LEAFLET_ZOOM, leafletMap.getZoom() + amount));
+            if (Math.abs(next - leafletMap.getZoom()) < 0.001) return false;
+            leafletMap.setZoom(next, { animate: true });
+            return true;
+        }
+        const current = mapLibreMap.getZoom();
+        const min = Number.isFinite(mapLibreMap.getMinZoom?.()) ? mapLibreMap.getMinZoom() : 0;
+        const max = Number.isFinite(mapLibreMap.getMaxZoom?.()) ? mapLibreMap.getMaxZoom() : MAX_MAPLIBRE_ZOOM;
+        const next = Math.max(min, Math.min(max, current + amount));
+        if (Math.abs(next - current) < 0.001) return false;
+        programmaticCameraMove = true;
+        mapLibreMap.zoomTo(next, { duration: 180, essential: true });
+        mapLibreMap.once("moveend", function () { programmaticCameraMove = false; });
+        window.setTimeout(function () { programmaticCameraMove = false; }, 500);
+        return true;
+    }
+
     function projectLatLng(latLng) {
         if (!mapLibreMap || !latLng) return null;
         const point = projectCoordinate(Number(latLng.lng), Number(latLng.lat));
@@ -1370,6 +1396,8 @@
         createMap,
         bindLeaflet,
         resize,
+        zoomBy,
+        getMaxZoom: function () { return MAX_LEAFLET_ZOOM; },
         getMap: function () { return mapLibreMap; },
         getZoom: function () { return mapLibreMap ? mapLibreMap.getZoom() + LEAFLET_ZOOM_OFFSET : null; },
         getStyleUrl: function () { return STYLE_URL; },
