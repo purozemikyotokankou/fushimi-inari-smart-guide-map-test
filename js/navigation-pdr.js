@@ -1,220 +1,184 @@
-/*
- * Fushimi Inari Smart Guide — experimental pedestrian dead reckoning.
- * Optional sensor-assisted positioning. Permission is requested from the navigation-start
- * tap when the browser requires it. Unsupported/denied sensors silently fall back to GPS.
- * Output is a short-term estimate, not a GPS fix; drift accumulates with every step.
+/* Fushimi Inari Smart Guide — optional pedestrian dead-reckoning sensors (V206)
+ * Motion/compass sensors are used only after an explicit user action and only
+ * while navigation is active. This module estimates steps and device heading;
+ * route-constrained position integration lives in planner.js.
  */
 (function () {
     "use strict";
-    let active = false;
-    let lastPosition = null;
-    let headingDegrees = null;
-    let headingSource = "none";
-    let stepCount = 0;
-    let lastStepAt = 0;
-    let gravityMagnitude = 9.81;
-    let smoothedSignal = 0;
-    let armed = true;
-    let lastStepInterval = 0;
-    let lastEmitted = 0;
-    const listeners = { motion: null, orientation: null, orientationAbsolute: null };
+
+    const state = {
+        attached: false,
+        permissionGranted: false,
+        motionAvailable: false,
+        orientationAvailable: false,
+        onStep: null,
+        onHeading: null,
+        onStatus: null,
+        lastStepAt: 0,
+        peakLatched: false,
+        lowPassMagnitude: 9.81,
+        lastHeading: null,
+        stepLengthMeters: 0.70,
+        motionEvents: 0,
+        orientationEvents: 0
+    };
+
+    function report(status, detail) {
+        if (typeof state.onStatus === "function") {
+            try { state.onStatus(status, detail || ""); } catch (_) {}
+        }
+    }
 
     function normalizeHeading(value) {
         if (!Number.isFinite(value)) return null;
         return ((value % 360) + 360) % 360;
     }
 
-    function smoothHeading(next) {
-        const value = normalizeHeading(next);
-        if (value === null) return;
-        if (headingDegrees === null) {
-            headingDegrees = value;
-            return;
+    function onOrientation(event) {
+        state.orientationEvents += 1;
+        let heading = null;
+
+        // iOS Safari exposes a calibrated compass heading directly.
+        if (Number.isFinite(Number(event.webkitCompassHeading))) {
+            heading = Number(event.webkitCompassHeading);
+        } else if (event.absolute === true && Number.isFinite(Number(event.alpha))) {
+            // W3C absolute orientation: alpha is measured counter-clockwise from north.
+            heading = 360 - Number(event.alpha);
         }
-        const diff = ((value - headingDegrees + 540) % 360) - 180;
-        headingDegrees = normalizeHeading(headingDegrees + diff * 0.22);
-    }
 
-    function readOrientation(event) {
-        if (!event) return;
-        const rawWebkitHeading = event.webkitCompassHeading;
-        const webkitHeading = Number(rawWebkitHeading);
-        if (rawWebkitHeading !== null && rawWebkitHeading !== undefined && Number.isFinite(webkitHeading)) {
-            smoothHeading(webkitHeading);
-            headingSource = "webkitCompassHeading";
-            return;
+        heading = normalizeHeading(heading);
+        if (heading === null) return;
+        state.lastHeading = heading;
+        if (typeof state.onHeading === "function") {
+            try { state.onHeading(heading); } catch (_) {}
         }
-        const rawAlpha = event.alpha;
-        const alpha = Number(rawAlpha);
-        if (rawAlpha !== null && rawAlpha !== undefined && Number.isFinite(alpha) && (event.absolute === true || event.type === "deviceorientationabsolute")) {
-            const screenAngle = Number(window.screen?.orientation?.angle ?? window.orientation ?? 0) || 0;
-            smoothHeading(360 - alpha + screenAngle);
-            headingSource = "absolute-alpha";
+        if (state.orientationEvents === 1) report("ready", "方角センサーを検出しました");
+    }
+
+    function onMotion(event) {
+        state.motionEvents += 1;
+        const linear = event.acceleration;
+        const gravity = event.accelerationIncludingGravity;
+        let magnitude = null;
+        let useLinear = false;
+
+        if (linear && [linear.x, linear.y, linear.z].every(Number.isFinite)) {
+            magnitude = Math.hypot(linear.x, linear.y, linear.z);
+            useLinear = true;
+        } else if (gravity && [gravity.x, gravity.y, gravity.z].every(Number.isFinite)) {
+            magnitude = Math.hypot(gravity.x, gravity.y, gravity.z);
         }
-    }
-
-    function metersToCoordinate(position, meters, heading) {
-        const radians = heading * Math.PI / 180;
-        const northMeters = Math.cos(radians) * meters;
-        const eastMeters = Math.sin(radians) * meters;
-        const lat = position.lat + northMeters / 111320;
-        const lng = position.lng + eastMeters / (111320 * Math.max(0.15, Math.cos(position.lat * Math.PI / 180)));
-        return { lat, lng };
-    }
-
-    function estimateStride(intervalMs) {
-        // Generic adult walking stride estimate. Individual gait varies; this is approximate.
-        if (intervalMs > 0 && intervalMs < 430) return 0.72;
-        if (intervalMs > 0 && intervalMs > 850) return 0.56;
-        return 0.64;
-    }
-
-    function emitPosition() {
-        if (!active || !lastPosition || headingDegrees === null) return;
-        const anchorAccuracy = Number(lastPosition.accuracy || 12);
-        const accuracy = Math.min(90, Math.max(anchorAccuracy, 12 + stepCount * 0.18));
-        const detail = {
-            lat: lastPosition.lat,
-            lng: lastPosition.lng,
-            heading: headingDegrees,
-            accuracy,
-            steps: stepCount,
-            source: "pdr-estimate",
-            headingSource
-        };
-        window.dispatchEvent(new CustomEvent("fushimi:pdr-position", { detail }));
-    }
-
-    function readMotion(event) {
-        if (!active || !event) return;
-        const acceleration = event.accelerationIncludingGravity || event.acceleration;
-        if (!acceleration) return;
-        const x = Number(acceleration.x || 0);
-        const y = Number(acceleration.y || 0);
-        const z = Number(acceleration.z || 0);
-        const magnitude = Math.sqrt(x * x + y * y + z * z);
         if (!Number.isFinite(magnitude)) return;
-        const hasGravity = !!event.accelerationIncludingGravity;
-        if (hasGravity) {
-            gravityMagnitude = gravityMagnitude * 0.92 + magnitude * 0.08;
+
+        const now = performance.now();
+        if (useLinear) {
+            // Linear acceleration already excludes gravity. A short peak latch
+            // avoids counting a single footfall several times.
+            if (magnitude < 0.42) state.peakLatched = false;
+            if (magnitude > 1.15 && !state.peakLatched && now - state.lastStepAt >= 360) {
+                state.peakLatched = true;
+                state.lastStepAt = now;
+                if (typeof state.onStep === "function") {
+                    try { state.onStep(state.stepLengthMeters, state.lastHeading); } catch (_) {}
+                }
+            }
+        } else {
+            // With gravity included, remove the slowly changing gravity baseline.
+            state.lowPassMagnitude = state.lowPassMagnitude * 0.92 + magnitude * 0.08;
+            const dynamicAcceleration = Math.abs(magnitude - state.lowPassMagnitude);
+            if (dynamicAcceleration < 0.22) state.peakLatched = false;
+            if (dynamicAcceleration > 0.78 && !state.peakLatched && now - state.lastStepAt >= 360) {
+                state.peakLatched = true;
+                state.lastStepAt = now;
+                if (typeof state.onStep === "function") {
+                    try { state.onStep(state.stepLengthMeters, state.lastHeading); } catch (_) {}
+                }
+            }
         }
-        const rawSignal = hasGravity ? magnitude - gravityMagnitude : magnitude;
-        smoothedSignal = smoothedSignal * 0.68 + rawSignal * 0.32;
-        const now = Date.now();
-        if (smoothedSignal < 0.24) armed = true;
-        if (!armed || smoothedSignal < 1.05 || now - lastStepAt < 300) return;
 
-        armed = false;
-        const interval = lastStepAt ? now - lastStepAt : 0;
-        if (interval > 0 && interval < 2000) lastStepInterval = interval;
-        lastStepAt = now;
-        stepCount += 1;
-        if (headingDegrees === null || !lastPosition) return;
-
-        const moved = metersToCoordinate(lastPosition, estimateStride(lastStepInterval), headingDegrees);
-        lastPosition = { ...lastPosition, ...moved };
-        if (now - lastEmitted > 120) {
-            lastEmitted = now;
-            emitPosition();
-        }
+        if (state.motionEvents === 1) report("ready", "歩行センサーを検出しました");
     }
 
-    function supportsMotion() {
-        return ("DeviceMotionEvent" in window) || ("ondevicemotion" in window);
-    }
-
-    function supportsOrientation() {
-        return ("DeviceOrientationEvent" in window) || ("ondeviceorientation" in window);
-    }
-
-    function supportsSensors() {
-        // Motion is the minimum requirement for step detection. Heading can be
-        // supplied by the compass when available or by GPS course as a fallback.
-        return supportsMotion();
+    function attach() {
+        if (state.attached) return;
+        window.addEventListener("devicemotion", onMotion, { passive: true });
+        window.addEventListener("deviceorientationabsolute", onOrientation, { passive: true });
+        window.addEventListener("deviceorientation", onOrientation, { passive: true });
+        state.attached = true;
+        report("listening", "端末の歩行・方角センサーを確認しています");
     }
 
     async function requestPermission() {
-        if (!supportsMotion()) return { granted: false, orientationGranted: false };
-        if (!window.isSecureContext && location.hostname !== "localhost") {
-            return { granted: false, orientationGranted: false };
+        if (window.isSecureContext === false) {
+            report("unsupported", "センサー利用にはHTTPS接続が必要です。GitHub PagesのHTTPSで開いてください");
+            return { granted: false, reason: "insecure-context" };
         }
+        const Motion = window.DeviceMotionEvent;
+        const Orientation = window.DeviceOrientationEvent;
+        if (!Motion && !Orientation) {
+            report("unsupported", "この端末・ブラウザはモーションセンサーに対応していません");
+            return { granted: false, reason: "unsupported" };
+        }
+
         try {
-            // Invoke all platform permission methods before awaiting so iOS keeps
-            // the transient user activation from the navigation-start tap.
-            const tasks = [];
-            let motionTaskIndex = -1;
-            let orientationTaskIndex = -1;
-            if (typeof window.DeviceMotionEvent?.requestPermission === "function") {
-                motionTaskIndex = tasks.length;
-                try { tasks.push(Promise.resolve(window.DeviceMotionEvent.requestPermission())); }
-                catch (error) { tasks.push(Promise.reject(error)); }
+            const requests = [];
+            if (Motion && typeof Motion.requestPermission === "function") {
+                requests.push(Promise.resolve(Motion.requestPermission()));
             }
-            if (supportsOrientation() && typeof window.DeviceOrientationEvent?.requestPermission === "function") {
-                orientationTaskIndex = tasks.length;
-                try { tasks.push(Promise.resolve(window.DeviceOrientationEvent.requestPermission())); }
-                catch (error) { tasks.push(Promise.reject(error)); }
+            if (Orientation && typeof Orientation.requestPermission === "function") {
+                requests.push(Promise.resolve(Orientation.requestPermission()));
             }
-            const results = await Promise.allSettled(tasks);
-            const statusAt = (index) => index < 0 ? "granted" :
-                (results[index]?.status === "fulfilled" ? results[index].value : "denied");
-            const motionGranted = statusAt(motionTaskIndex) === "granted";
-            const orientationGranted = statusAt(orientationTaskIndex) === "granted";
-            return { granted: motionGranted, orientationGranted };
+            const results = await Promise.all(requests);
+            if (results.some(value => value !== "granted")) {
+                report("denied", "センサーの利用が許可されませんでした。GPSで案内を続けます");
+                return { granted: false, reason: "denied" };
+            }
+            state.permissionGranted = true;
+            attach();
+            report("listening", "センサーを起動しました。歩行を検出しています");
+            return { granted: true };
         } catch (error) {
-            console.debug("Optional walking sensors unavailable; using GPS only.", error);
-            return { granted: false, orientationGranted: false };
+            report("denied", "センサーを起動できませんでした。GPSで案内を続けます");
+            return { granted: false, reason: "error", error };
         }
     }
 
-    function start(seed) {
-        const lat = Number(seed?.lat);
-        const lng = Number(seed?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-        stop();
-        lastPosition = { lat, lng, accuracy: Number(seed?.accuracy || 20) };
-        headingDegrees = null;
-        headingSource = "none";
-        if (seed?.heading !== null && seed?.heading !== undefined && Number.isFinite(Number(seed.heading))) headingDegrees = normalizeHeading(Number(seed.heading));
-        stepCount = 0;
-        lastStepAt = 0;
-        lastStepInterval = 0;
-        gravityMagnitude = 9.81;
-        smoothedSignal = 0;
-        armed = true;
-        active = true;
-        listeners.motion = readMotion;
-        listeners.orientation = readOrientation;
-        listeners.orientationAbsolute = readOrientation;
-        window.addEventListener("devicemotion", listeners.motion, { passive: true });
-        window.addEventListener("deviceorientation", listeners.orientation, { passive: true });
-        window.addEventListener("deviceorientationabsolute", listeners.orientationAbsolute, { passive: true });
-        return true;
-    }
-
-    function reanchor(position) {
-        const lat = Number(position?.lat);
-        const lng = Number(position?.lng);
-        if (!active || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-        lastPosition = { lat, lng, accuracy: Number(position.accuracy || 15) };
-        if (position.heading !== null && position.heading !== undefined && Number.isFinite(Number(position.heading))) smoothHeading(Number(position.heading));
-        return true;
+    function start(callbacks) {
+        const options = callbacks || {};
+        state.onStep = typeof options.onStep === "function" ? options.onStep : state.onStep;
+        state.onHeading = typeof options.onHeading === "function" ? options.onHeading : state.onHeading;
+        state.onStatus = typeof options.onStatus === "function" ? options.onStatus : state.onStatus;
+        if (state.permissionGranted) attach();
+        return state.permissionGranted;
     }
 
     function stop() {
-        if (listeners.motion) window.removeEventListener("devicemotion", listeners.motion);
-        if (listeners.orientation) window.removeEventListener("deviceorientation", listeners.orientation);
-        if (listeners.orientationAbsolute) window.removeEventListener("deviceorientationabsolute", listeners.orientationAbsolute);
-        listeners.motion = listeners.orientation = listeners.orientationAbsolute = null;
-        active = false;
+        if (state.attached) {
+            window.removeEventListener("devicemotion", onMotion);
+            window.removeEventListener("deviceorientationabsolute", onOrientation);
+            window.removeEventListener("deviceorientation", onOrientation);
+        }
+        state.attached = false;
+        state.onStep = null;
+        state.onHeading = null;
+        state.onStatus = null;
+        state.lastStepAt = 0;
+        state.peakLatched = false;
+        state.motionEvents = 0;
+        state.orientationEvents = 0;
+        state.lastHeading = null;
     }
 
-    window.FushimiWalkingPDR = {
+    window.FushimiPDR = {
         requestPermission,
         start,
         stop,
-        reanchor,
-        isSupported: supportsSensors,
-        isRunning: () => active,
-        getPosition: () => lastPosition ? { ...lastPosition, heading: headingDegrees, steps: stepCount } : null
+        isActive: () => state.attached,
+        getHeading: () => state.lastHeading,
+        getStepLength: () => state.stepLengthMeters,
+        setStepLength: value => {
+            const length = Number(value);
+            if (Number.isFinite(length)) state.stepLengthMeters = Math.max(0.45, Math.min(0.95, length));
+        }
     };
 })();
