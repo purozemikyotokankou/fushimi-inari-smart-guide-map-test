@@ -6876,7 +6876,10 @@ body.planner-page .liquid-cursor {
 }
 #map.maplibre-active .leaflet-marker-shadow,
 #map.maplibre-active .leaflet-interactive { pointer-events: none !important; }
-#map.maplibre-active .leaflet-popup-pane,
+/* V204 FIX: the popup pane itself fills the map. It must not intercept
+   background gestures; only an actual popup card should receive pointer input. */
+#map.maplibre-active .leaflet-popup-pane { pointer-events: none !important; }
+#map.maplibre-active .leaflet-popup-pane .leaflet-popup,
 #map.maplibre-active .leaflet-popup { pointer-events: auto !important; }
 #map.maplibre-active .leaflet-marker-icon {
     /* Avoid persistent GPU marker textures that can leave trails while panning. */
@@ -7248,7 +7251,9 @@ body.planner-page .liquid-cursor {
 }
 #map.maplibre-active.is-maplibre-3d-ready .fushimi-marker-overlay {
     opacity: 1 !important;
-    pointer-events: auto !important;
+    /* The overlay covers the entire map. Keep its empty area transparent to
+       pointer input; only .fushimi-marker-proxy children may receive taps. */
+    pointer-events: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
     #maplibreBase .maplibregl-canvas-container {
@@ -7654,4 +7659,23 @@ body.planner-page .liquid-cursor {
 #map .fushimi-marker-overlay .fushimi-marker-proxy {
   pointer-events: auto !important;
   touch-action: none !important;
+}
+
+
+/* V204 — the full-size Leaflet popup pane is transparent to map gestures. */
+#map.maplibre-active .leaflet-popup-pane {
+  pointer-events: none !important;
+}
+#map.maplibre-active .leaflet-popup-pane > .leaflet-popup,
+#map.maplibre-active .leaflet-popup-pane .leaflet-popup {
+  pointer-events: auto !important;
+}
+
+
+/* V205 — fixed-display state: transparent marker layer, clickable pin children. */
+#map.maplibre-active.is-maplibre-3d-ready .fushimi-marker-overlay {
+  pointer-events: none !important;
+}
+#map.maplibre-active.is-maplibre-3d-ready .fushimi-marker-overlay .fushimi-marker-proxy {
+  pointer-events: auto !important;
 }

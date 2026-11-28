@@ -1,4 +1,4 @@
-/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v203 native MapLibre gestures)
+/* Fushimi Inari Smart Guide — MapLibre 3D map bridge (v204 popup-pane input fix)
  * MapLibre owns the base-map camera; one shared pointer/wheel controller handles drag and pinch.
  * Existing Leaflet vector panes are projected onto the same camera plane with a
  * projective transform. Visible spot pins use one isolated proxy per marker; the
@@ -101,6 +101,11 @@
         const mapRoot = document.getElementById("map");
         mapContainer?.classList.toggle("is-maplibre-3d-ready", !!ready);
         mapRoot?.classList.toggle("is-maplibre-3d-ready", !!ready);
+        // The marker overlay fills the whole map, but only its pin children
+        // should receive pointer input. If the parent becomes auto on the
+        // 3D-ready transition it blocks MapLibre's canvas drag / pinch / wheel.
+        const markerOverlay = mapRoot?.querySelector(".fushimi-marker-overlay");
+        markerOverlay?.style.setProperty("pointer-events", "none", "important");
         if (ready) {
             hideStatus();
             if (fixed3DBadge && terrainEnabled) {
@@ -450,6 +455,9 @@
             "position:absolute", "inset:0", "z-index:680", "overflow:visible",
             "pointer-events:none", "transform:none", "contain:layout style"
         ].join(";");
+        // !important is intentional: older V185 CSS set pointer-events:auto
+        // on this full-size parent when 3D became ready.
+        markerOverlayContainer.style.setProperty("pointer-events", "none", "important");
         host.appendChild(markerOverlayContainer);
         return markerOverlayContainer;
     }
@@ -1288,6 +1296,11 @@
         });
         const tilePane = leafletMap.getPanes()?.tilePane;
         if (tilePane) tilePane.style.display = "none";
+        // Leaflet creates popupPane as a full-map transparent layer. The pane
+        // must pass blank-map input through to MapLibre; real popup cards stay
+        // interactive through the CSS rule added in V204.
+        const popupPane = leafletMap.getPane?.("popupPane");
+        if (popupPane) popupPane.style.setProperty("pointer-events", "none", "important");
         leafletMap.getContainer().style.background = "transparent";
         // Disable Leaflet's own marker zoom animation. MapLibre is the only visible
         // camera and markerProxy overlay is the only visible marker renderer.

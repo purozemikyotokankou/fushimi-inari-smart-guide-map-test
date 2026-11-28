@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v203 native MapLibre gestures) */
+/* Fushimi Inari Smart Guide — offline support (v205 3D marker overlay pointer pass-through) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v203';
+const CACHE_NAME = 'fushimi-smart-guide-v205';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 203;
+const WORKER_VERSION = 204;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
