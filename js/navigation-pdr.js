@@ -18,6 +18,8 @@
         peakLatched: false,
         lowPassMagnitude: 9.81,
         lastHeading: null,
+        gyroHeading: null,
+        lastGyroAt: 0,
         stepLengthMeters: 0.70,
         motionEvents: 0,
         orientationEvents: 0
@@ -34,6 +36,19 @@
         return ((value % 360) + 360) % 360;
     }
 
+    function blendHeading(base, correction, correctionWeight) {
+        if (!Number.isFinite(base)) return normalizeHeading(correction);
+        if (!Number.isFinite(correction)) return normalizeHeading(base);
+        const delta = ((correction - base + 540) % 360) - 180;
+        return normalizeHeading(base + delta * correctionWeight);
+    }
+
+    function publishHeading() {
+        if (Number.isFinite(state.lastHeading) && typeof state.onHeading === "function") {
+            try { state.onHeading(state.lastHeading); } catch (_) {}
+        }
+    }
+
     function onOrientation(event) {
         state.orientationEvents += 1;
         let heading = null;
@@ -48,15 +63,34 @@
 
         heading = normalizeHeading(heading);
         if (heading === null) return;
-        state.lastHeading = heading;
-        if (typeof state.onHeading === "function") {
-            try { state.onHeading(heading); } catch (_) {}
-        }
+        // Absolute device orientation is the compass correction. Blend it with
+        // the short-term gyroscope estimate to damp abrupt compass jitter.
+        state.lastHeading = Number.isFinite(state.gyroHeading)
+            ? blendHeading(heading, state.gyroHeading, 0.12)
+            : heading;
+        state.gyroHeading = state.lastHeading;
+        publishHeading();
         if (state.orientationEvents === 1) report("ready", "方角センサーを検出しました");
     }
 
     function onMotion(event) {
         state.motionEvents += 1;
+
+        // Integrate the device z-axis rotation rate for short-term heading
+        // continuity. Absolute compass/orientation events periodically correct
+        // drift; if rotationRate is unavailable, the compass remains the source.
+        const rotation = event.rotationRate;
+        const now = performance.now();
+        if (rotation && Number.isFinite(rotation.alpha)) {
+            if (state.lastGyroAt && Number.isFinite(state.gyroHeading)) {
+                const dt = Math.max(0, Math.min(0.08, (now - state.lastGyroAt) / 1000));
+                state.gyroHeading = normalizeHeading(state.gyroHeading - Number(rotation.alpha) * dt);
+                state.lastHeading = state.gyroHeading;
+                publishHeading();
+            }
+            state.lastGyroAt = now;
+        }
+
         const linear = event.acceleration;
         const gravity = event.accelerationIncludingGravity;
         let magnitude = null;
@@ -70,7 +104,6 @@
         }
         if (!Number.isFinite(magnitude)) return;
 
-        const now = performance.now();
         if (useLinear) {
             // Linear acceleration already excludes gravity. A short peak latch
             // avoids counting a single footfall several times.
@@ -167,6 +200,8 @@
         state.motionEvents = 0;
         state.orientationEvents = 0;
         state.lastHeading = null;
+        state.gyroHeading = null;
+        state.lastGyroAt = 0;
     }
 
     window.FushimiPDR = {
@@ -181,6 +216,129 @@
             if (Number.isFinite(length)) state.stepLengthMeters = Math.max(0.45, Math.min(0.95, length));
         }
     };
+
+    function installMapControlsAndPinDeclutter(leafletMap, mapLibreMap) {
+        const mapRoot = document.getElementById("map");
+        const overlay = mapRoot?.querySelector(".fushimi-marker-overlay");
+        if (!mapRoot || !overlay || !mapLibreMap) return;
+        if (mapRoot.dataset.fushimiUxV209 === "1") return;
+        mapRoot.dataset.fushimiUxV209 = "1";
+
+        const style = document.createElement("style");
+        style.id = "fushimi-map-ux-v209-style";
+        style.textContent = `
+          #map { position: relative !important; }
+          #map .fushimi-marker-overlay { pointer-events: none !important; }
+          #map .fushimi-marker-proxy.fushimi-cluster-hidden { display: none !important; }
+          #map .fushimi-marker-overlay.fushimi-declutter-labels .marker-name-glass { display: none !important; }
+          #map .fushimi-marker-overlay.fushimi-declutter-labels .marker-pin { transform: scale(.88); transform-origin: center bottom; }
+          .fushimi-cluster-badge { position:absolute; z-index:2147483000; width:48px; height:48px; border:3px solid #fff; border-radius:50%; display:grid; place-items:center; background:#c32622; color:#fff; font:900 16px/1 system-ui,sans-serif; box-shadow:0 4px 15px rgba(0,0,0,.28); pointer-events:auto; cursor:pointer; touch-action:manipulation; }
+          .fushimi-cluster-badge:focus-visible { outline:3px solid #174ea6; outline-offset:3px; }
+          .fushimi-map-zoom { position:absolute; right:14px; bottom:62px; z-index:2147483001; display:grid; gap:8px; }
+          .fushimi-map-zoom button { width:50px; height:50px; border:1px solid rgba(0,0,0,.12); border-radius:16px; background:rgba(255,255,255,.96); color:#202124; font:800 29px/1 system-ui,sans-serif; box-shadow:0 4px 16px rgba(0,0,0,.2); cursor:pointer; touch-action:manipulation; }
+          .fushimi-map-zoom button:active { transform:scale(.94); }
+          .fushimi-map-zoom button:focus-visible { outline:3px solid #174ea6; outline-offset:2px; }
+          @media(max-width:600px){ .fushimi-map-zoom{right:10px;bottom:76px;gap:7px}.fushimi-map-zoom button{width:48px;height:48px;border-radius:15px} .fushimi-cluster-badge{width:46px;height:46px} }
+          body.is-navigation-active .fushimi-map-zoom { bottom: max(18px, env(safe-area-inset-bottom)); }
+        `;
+        if (!document.getElementById(style.id)) document.head.appendChild(style);
+
+        const zoomControl = document.createElement("div");
+        zoomControl.className = "fushimi-map-zoom";
+        zoomControl.setAttribute("role", "group");
+        zoomControl.setAttribute("aria-label", "地図の拡大・縮小");
+        zoomControl.innerHTML = '<button type="button" data-zoom="in" aria-label="地図を拡大" title="拡大">＋</button><button type="button" data-zoom="out" aria-label="地図を縮小" title="縮小">−</button>';
+        zoomControl.addEventListener("pointerdown", event => event.stopPropagation());
+        zoomControl.addEventListener("click", event => {
+            const button = event.target.closest("button[data-zoom]");
+            if (!button) return;
+            event.preventDefault(); event.stopPropagation();
+            window.FushimiMapEngine?.zoomBy?.(button.dataset.zoom === "in" ? 1 : -1);
+            updateZoomButtons();
+        });
+        mapRoot.appendChild(zoomControl);
+
+        function updateZoomButtons() {
+            const zoom = Number(window.FushimiMapEngine?.getZoom?.() ?? mapLibreMap.getZoom());
+            const buttons = zoomControl.querySelectorAll("button");
+            if (buttons[0]) buttons[0].disabled = zoom >= 23.9;
+            if (buttons[1]) buttons[1].disabled = zoom <= 0.1;
+            buttons.forEach(button => button.style.opacity = button.disabled ? ".42" : "1");
+        }
+
+        let clusterFrame = 0;
+        function renderDeclutter() {
+            clusterFrame = 0;
+            if (!overlay.isConnected) return;
+            const zoom = Number(mapLibreMap.getZoom?.() || 0);
+            overlay.classList.toggle("fushimi-declutter-labels", zoom < 17.2);
+            overlay.querySelectorAll(".fushimi-cluster-badge").forEach(node => node.remove());
+            const proxies = [...overlay.querySelectorAll(".fushimi-marker-proxy")];
+            proxies.forEach(node => node.classList.remove("fushimi-cluster-hidden"));
+            if (zoom > 15.7 || proxies.length < 2) { updateZoomButtons(); return; }
+
+            const points = proxies.map(node => {
+                const pin = node.querySelector(".marker-pin") || node;
+                const rect = pin.getBoundingClientRect();
+                const parent = overlay.getBoundingClientRect();
+                return { node, x: rect.left + rect.width / 2 - parent.left, y: rect.top + rect.height / 2 - parent.top };
+            }).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+            const used = new Set();
+            const clusters = [];
+            for (let i = 0; i < points.length; i++) {
+                if (used.has(i)) continue;
+                const group = [points[i]]; used.add(i);
+                for (let j = i + 1; j < points.length; j++) {
+                    if (used.has(j)) continue;
+                    const close = group.some(p => Math.hypot(p.x - points[j].x, p.y - points[j].y) < 58);
+                    if (close) { group.push(points[j]); used.add(j); }
+                }
+                if (group.length > 1) clusters.push(group);
+            }
+            clusters.forEach(group => {
+                const x = group.reduce((sum,p)=>sum+p.x,0)/group.length;
+                const y = group.reduce((sum,p)=>sum+p.y,0)/group.length;
+                group.forEach(p => p.node.classList.add("fushimi-cluster-hidden"));
+                const badge = document.createElement("button");
+                badge.type = "button"; badge.className = "fushimi-cluster-badge";
+                badge.textContent = String(group.length);
+                badge.setAttribute("aria-label", `近くのスポット ${group.length} 件。タップして拡大`);
+                badge.title = `近くのスポット ${group.length} 件。タップして拡大`;
+                badge.style.left = `${x}px`; badge.style.top = `${y}px`;
+                badge.style.transform = "translate(-50%, -50%)";
+                badge.addEventListener("pointerdown", event => event.stopPropagation());
+                badge.addEventListener("click", event => {
+                    event.preventDefault(); event.stopPropagation();
+                    const center = mapLibreMap.unproject([x, y]);
+                    mapLibreMap.easeTo({ center: [center.lng, center.lat], zoom: Math.min(23, mapLibreMap.getZoom() + 2.4), duration: 420 });
+                });
+                overlay.appendChild(badge);
+            });
+            updateZoomButtons();
+        }
+        function scheduleDeclutter() {
+            if (clusterFrame) return;
+            clusterFrame = requestAnimationFrame(renderDeclutter);
+        }
+        mapLibreMap.on("zoom", scheduleDeclutter);
+        mapLibreMap.on("move", scheduleDeclutter);
+        mapLibreMap.on("moveend", scheduleDeclutter);
+        mapLibreMap.on("idle", scheduleDeclutter);
+        leafletMap.on("layeradd layerremove", scheduleDeclutter);
+        const observer = new MutationObserver(records => {
+            const markerChanged = records.some(record =>
+                [...record.addedNodes, ...record.removedNodes].some(node =>
+                    node.nodeType === 1 && (node.matches?.(".fushimi-marker-proxy") || node.querySelector?.(".fushimi-marker-proxy"))
+                )
+            );
+            // Ignore our own cluster-badge insertions/removals to avoid a render loop.
+            if (markerChanged) scheduleDeclutter();
+        });
+        observer.observe(overlay, { childList: true });
+        mapRoot.addEventListener("fushimi:marker-overlay-updated", scheduleDeclutter);
+        scheduleDeclutter();
+        updateZoomButtons();
+    }
 
     // V208: Start MapLibre automatically when planner.js creates its Leaflet map.
     // The previous page loaded the MapLibre engine but never called createMap(),
@@ -228,6 +386,7 @@
                     // This class activates the existing V183+ CSS that hides
                     // the old raster tile pane and displays the MapLibre canvas.
                     target.classList.add("maplibre-active");
+                    installMapControlsAndPinDeclutter(leafletMap, mapLibreMap);
                     engine.resize?.();
                     leafletMap.invalidateSize?.({ pan: false });
 

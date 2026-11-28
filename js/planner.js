@@ -2664,7 +2664,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     id="plannerV11SensorButton"
                     disabled
                 >
-                    センサー測位を有効化
+                    GPSが弱いとき：センサー測位をON
                 </button>
 
                 <button
@@ -7711,7 +7711,7 @@ document.addEventListener("DOMContentLoaded", function () {
         navigationLastHeading = null;
         if (navSensorButton) {
             navSensorButton.disabled = !navigationActive;
-            navSensorButton.textContent = "センサー測位を有効化";
+            navSensorButton.textContent = "GPSが弱いとき：センサー測位をON";
             navSensorButton.classList.remove("is-enabled");
         }
     }
@@ -8449,6 +8449,57 @@ document.addEventListener("DOMContentLoaded", function () {
         );
     }
 
+    function getBearingDegrees(a, b) {
+        const lat1 = Number(a[0]) * Math.PI / 180;
+        const lat2 = Number(b[0]) * Math.PI / 180;
+        const dLng = (Number(b[1]) - Number(a[1])) * Math.PI / 180;
+        const y = Math.sin(dLng) * Math.cos(lat2);
+        const x = Math.cos(lat1) * Math.sin(lat2) -
+            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function getNextTurnInstruction(location, leg) {
+        const paths = getPdrPathParts(leg);
+        const cosLat = Math.max(0.05, Math.cos(Number(location.lat) * Math.PI / 180));
+        let best = null;
+        paths.forEach(function (path) {
+            for (let i = 0; i < path.length - 1; i++) {
+                const a = path[i], b = path[i + 1];
+                const ax = (Number(a[1]) - location.lng) * 111320 * cosLat;
+                const ay = (Number(a[0]) - location.lat) * 111320;
+                const bx = (Number(b[1]) - location.lng) * 111320 * cosLat;
+                const by = (Number(b[0]) - location.lat) * 111320;
+                const dx = bx - ax, dy = by - ay;
+                const lengthSq = dx * dx + dy * dy;
+                const t = lengthSq > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSq)) : 0;
+                const distance = Math.hypot(ax + dx * t, ay + dy * t);
+                if (!best || distance < best.distance) best = { path, segmentIndex: i, t, distance };
+            }
+        });
+        if (!best || best.distance > 100) return null;
+
+        const path = best.path;
+        const segmentStart = path[best.segmentIndex];
+        const segmentEnd = path[best.segmentIndex + 1];
+        const projected = [
+            Number(segmentStart[0]) + (Number(segmentEnd[0]) - Number(segmentStart[0])) * best.t,
+            Number(segmentStart[1]) + (Number(segmentEnd[1]) - Number(segmentStart[1])) * best.t
+        ];
+        let distanceAhead = map.distance(projected, segmentEnd);
+        for (let vertexIndex = best.segmentIndex + 1; vertexIndex < path.length - 1; vertexIndex++) {
+            const before = getBearingDegrees(path[vertexIndex - 1], path[vertexIndex]);
+            const after = getBearingDegrees(path[vertexIndex], path[vertexIndex + 1]);
+            const delta = ((after - before + 540) % 360) - 180;
+            if (distanceAhead >= 12 && distanceAhead <= 300 && Math.abs(delta) >= 32 && Math.abs(delta) <= 150) {
+                const direction = delta > 0 ? "right" : "left";
+                return { direction, distance: Math.round(distanceAhead), icon: direction === "right" ? "↱" : "↰" };
+            }
+            distanceAhead += map.distance(path[vertexIndex], path[vertexIndex + 1]);
+        }
+        return null;
+    }
+
     function updateNavigationByLocation(
         location
     ) {
@@ -8522,34 +8573,38 @@ document.addEventListener("DOMContentLoaded", function () {
                 )} m`;
         }
 
-        const remainingMinutes =
-            Math.ceil(
-                remainingMeters /
-                80
-            );
+        const remainingMinutes = Math.ceil(remainingMeters / 80);
+        const arrivalAt = new Date(Date.now() + remainingMinutes * 60000);
+        const arrivalLabel = arrivalAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const nextTurn = getNextTurnInstruction(location, leg);
+        let maneuverText = "参道に沿って進んでください";
+        let maneuverIcon = "↑";
+        let maneuverDirection = "straight";
+        let maneuverDistance = `目的地まで ${Math.round(remainingMeters)} m`;
 
-        if (navManeuverText) {
-            navManeuverText.textContent = remainingMeters <= 25
-                ? "まもなく次の目的地です"
-                : "参道に沿って進んでください";
+        if (remainingMeters <= 25) {
+            maneuverText = "まもなく次の目的地です";
+            maneuverIcon = "◎";
+            maneuverDirection = "arrived";
+            maneuverDistance = `目的地まで ${Math.round(remainingMeters)} m`;
+        } else if (nextTurn) {
+            maneuverText = `約${nextTurn.distance} m先を${nextTurn.direction === "right" ? "右" : "左"}へ`;
+            maneuverIcon = nextTurn.icon;
+            maneuverDirection = nextTurn.direction;
+            maneuverDistance = `曲がるまで ${nextTurn.distance} m · 目的地まで ${Math.round(remainingMeters)} m`;
         }
-        if (navManeuverIcon) navManeuverIcon.textContent = remainingMeters <= 25 ? "◎" : "↑";
-        if (navManeuverDistance) navManeuverDistance.textContent = `次の目的地まで ${Math.round(remainingMeters)} m · 約${remainingMinutes}分`;
-        if (navManeuver) navManeuver.dataset.direction = "straight";
 
-        setNavMeta(
-            [
-                `${Math.round(
-                    remainingMeters
-                )} m`,
+        if (navManeuverText) navManeuverText.textContent = maneuverText;
+        if (navManeuverIcon) navManeuverIcon.textContent = maneuverIcon;
+        if (navManeuverDistance) navManeuverDistance.textContent = `${maneuverDistance} · 約${remainingMinutes}分`;
+        if (navManeuver) navManeuver.dataset.direction = maneuverDirection;
 
-                formatTime(
-                    remainingMinutes
-                ),
-
-                `${navigationLegIndex + 1}/${navigationLegs.length}`
-            ]
-        );
+        if (navStatus) navStatus.textContent = `ナビ中 · 残り ${Math.round(remainingMeters)} m · 到着 ${arrivalLabel}`;
+        setNavMeta([
+            `${Math.round(remainingMeters)} m`,
+            `約${formatTime(remainingMinutes)}`,
+            `到着 ${arrivalLabel}`
+        ]);
 
         const arrivalThreshold = location.source === "sensor" ? 18 : 35;
         if (
@@ -8744,9 +8799,9 @@ document.addEventListener("DOMContentLoaded", function () {
             const result = await window.FushimiPDR.requestPermission();
             if (result?.granted) {
                 startPdrTracking();
-                navSensorButton.textContent = "センサー測位 ON";
+                navSensorButton.textContent = "センサー測位 ON · 補助中";
                 navSensorButton.classList.add("is-enabled");
-                setSensorStatus("歩行・方角センサーを起動しました。GPSが弱いときに補助します");
+                setSensorStatus("センサー測位 ON。端末を歩く向きに持ってください。GPSが弱い場所で歩行・方角を使って位置を補助します");
             } else {
                 navSensorButton.disabled = false;
                 setSensorStatus("許可されなかったためGPSで案内します");
