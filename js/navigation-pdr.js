@@ -229,7 +229,7 @@
         style.textContent = `
           #map { position: relative !important; }
           #map .fushimi-marker-overlay { pointer-events: none !important; }
-          #map .fushimi-marker-proxy.fushimi-cluster-hidden { display: none !important; }
+          #map .fushimi-marker-proxy.fushimi-cluster-hidden { visibility:hidden !important; opacity:0 !important; pointer-events:none !important; }
           #map .fushimi-marker-overlay.fushimi-declutter-labels .marker-name-glass { display: none !important; }
           #map .fushimi-marker-overlay.fushimi-declutter-labels .marker-pin { transform: scale(.88); transform-origin: center bottom; }
           .fushimi-cluster-badge { position:absolute; z-index:2147483000; width:48px; height:48px; border:3px solid #fff; border-radius:50%; display:grid; place-items:center; background:#c32622; color:#fff; font:900 16px/1 system-ui,sans-serif; box-shadow:0 4px 15px rgba(0,0,0,.28); pointer-events:auto; cursor:pointer; touch-action:manipulation; }
@@ -243,10 +243,10 @@
             clusterFrame = 0;
             if (!overlay.isConnected) return;
             const zoom = Number(mapLibreMap.getZoom?.() || 0);
-            overlay.classList.toggle("fushimi-declutter-labels", zoom < 17.2);
+            overlay.classList.toggle("fushimi-declutter-labels", zoom <= 15.7);
             overlay.querySelectorAll(".fushimi-cluster-badge").forEach(node => node.remove());
             const proxies = [...overlay.querySelectorAll(".fushimi-marker-proxy")];
-            proxies.forEach(node => node.classList.remove("fushimi-cluster-hidden"));
+            proxies.forEach(node => { node.classList.remove("fushimi-cluster-hidden"); delete node.dataset.fushimiClusterHidden; });
             if (zoom > 15.7 || proxies.length < 2) return;
 
             const points = proxies.map(node => {
@@ -270,7 +270,7 @@
             clusters.forEach(group => {
                 const x = group.reduce((sum,p)=>sum+p.x,0)/group.length;
                 const y = group.reduce((sum,p)=>sum+p.y,0)/group.length;
-                group.forEach(p => p.node.classList.add("fushimi-cluster-hidden"));
+                group.forEach(p => { p.node.classList.add("fushimi-cluster-hidden"); p.node.dataset.fushimiClusterHidden = "1"; });
                 const badge = document.createElement("button");
                 badge.type = "button"; badge.className = "fushimi-cluster-badge";
                 badge.textContent = String(group.length);

@@ -4,8 +4,8 @@ document.addEventListener("DOMContentLoaded", function () {
     // BUILD MARKER — V11.2
     // この文字列がConsoleに出れば、このplanner.jsが実行されています。
     // ============================================================
-    window.__FUSHIMI_PLANNER_BUILD__ = "V193-MULTILINGUAL-SPOTS";
-    console.log("[Fushimi Inari Smart Guide] planner.js V193-MULTILINGUAL-SPOTS loaded");
+    window.__FUSHIMI_PLANNER_BUILD__ = "V212-HOME-CTA-AUTO-NAV";
+    console.log("[Fushimi Inari Smart Guide] planner.js V212-HOME-CTA-AUTO-NAV loaded");
 
     // ============================================================
     // 伏見稲荷スマートガイド / planner.js V11 ALL-IN-ONE
@@ -5002,7 +5002,10 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         submitButton?.addEventListener("click", async function () {
             if (errorNode) { errorNode.hidden = true; errorNode.textContent = ""; }
-            const startSpot = state.originMode === "spot" ? spots.find(item => String(item.id) === String(state.startSpotId || "")) : null;
+            // Always use the visitor's live location as the route origin.
+            state.originMode = "current";
+            state.startSpotId = "";
+            const startSpot = null;
             if (state.originMode === "spot" && !startSpot) {
                 if (errorNode) { errorNode.textContent = text("chooseStartError"); errorNode.hidden = false; }
                 return;
@@ -5014,14 +5017,31 @@ document.addEventListener("DOMContentLoaded", function () {
             submitButton.disabled = true;
             submitButton.innerHTML = `<span aria-hidden="true">◌</span><span>${escapeHTML(text("loading"))}</span>`;
             try {
-                await createRoute({
+                // Request both motion and orientation permissions directly from
+                // the search tap, before network awaits consume user activation.
+                let sensorResult = { granted: false, reason: "unavailable" };
+                if (window.FushimiPDR?.requestPermission) {
+                    setSensorStatus("歩行・方角センサーの利用許可を確認しています…");
+                    try { sensorResult = await window.FushimiPDR.requestPermission(); }
+                    catch (sensorError) { console.warn("センサー許可を取得できませんでした:", sensorError); }
+                }
+                const routeCreated = await createRoute({
                     destinationSpot: state.destinationSpot,
-                    originMode: state.originMode,
-                    startSpot: startSpot || null,
+                    originMode: "current",
+                    startSpot: null,
                     travelMode: state.travelMode,
                     routeMode: state.routeMode || "shortest",
                     viaSpotIds: state.viaSpotIds.slice()
                 });
+                if (routeCreated) {
+                    if (sensorResult?.granted) {
+                        startPdrTracking();
+                        setSensorStatus("歩行・方角センサー ON · GPSと常時併用中");
+                    } else {
+                        setSensorStatus("センサーは利用できないためGPSで案内します");
+                    }
+                    startNavigation();
+                }
             } finally {
                 if (submitButton.isConnected) {
                     submitButton.disabled = false;
@@ -7940,7 +7960,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (!selectedSpots.length) {
             alert("まずスポットを1か所以上選択してください。");
-            return;
+            return false;
         }
 
         const explicitOriginMode = routeOptions?.originMode || null;
@@ -7951,7 +7971,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const requestedViaIds = Array.isArray(routeOptions?.viaSpotIds) ? routeOptions.viaSpotIds.map(String) : [];
         if (explicitOriginMode === "spot" && !explicitStartSpot) {
             alert(routeSetupText("selectStartError"));
-            return;
+            return false;
         }
 
         if (routeLine) {
@@ -7971,7 +7991,7 @@ document.addEventListener("DOMContentLoaded", function () {
             } catch (error) {
                 console.warn("現在地を取得できませんでした。", error);
                 alert(routeSetupText("noOrigin"));
-                return;
+                return false;
             }
         } else if (!explicitOriginMode) {
             try {
@@ -8013,7 +8033,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         if (!routeTargets.length) {
             alert("経由地と到着地を確認してください。");
-            return;
+            return false;
         }
 
         const routePaths = [];
@@ -8075,12 +8095,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 "徒歩ルートを作成できませんでした。\n" +
                 (error?.message || "参道データの接続を確認してください。")
             );
-            return;
+            return false;
         }
 
         if (!routePaths.length) {
             alert("ルートを作成できませんでした。参道データを確認してください。");
-            return;
+            return false;
         }
 
         // 経路検索の全区間を、出発地から到着地まで一本の連続した座標列へ統合する。
@@ -8098,7 +8118,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 `案内線を一本につなげられません。区間 ${stitchedJourney.partIndex + 1} の接続に約${gap}mの隙間があります。\n` +
                 "不自然な直線や別の区間を光らせないため、ルート表示を中止しました。参道データの接続を確認してください。"
             );
-            return;
+            return false;
         }
 
         const completeJourneyPath = stitchedJourney.path;
@@ -8189,6 +8209,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (routeOptions?.destinationSpot) hideSpotDetail();
         setFoodCategorySwitcherOpen(false);
         setPlannerSheetState("collapsed");
+        return true;
     }
 
     if (createRouteBtn) {
@@ -8239,7 +8260,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (navManeuver) navManeuver.dataset.direction = "straight";
         if (navManeuverText) navManeuverText.textContent = "参道に沿って進んでください";
         if (navManeuverIcon) navManeuverIcon.textContent = "↑";
-        setSensorStatus("GPSで現在地を確認しています。必要ならセンサー測位を有効にできます");
+        setSensorStatus(window.FushimiPDR?.isActive?.() ? "歩行・方角センサー ON · GPSと常時併用中" : "GPSで現在地を確認しています");
 
         if (currentLocation) followNavigationLocation(currentLocation, true);
 

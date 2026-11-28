@@ -540,11 +540,14 @@
         }
 
         const proxy = entry.element;
+        // Preserve cluster-hidden state across marker class/projection refreshes.
+        const clusterHidden = proxy.dataset.fushimiClusterHidden === "1";
         // Keep dynamic marker classes (selected/viewed/railway) and pane ordering
         // in sync with the source while leaving Leaflet's moving DOM node invisible.
         if (proxy.className !== `${sourceIcon.className} fushimi-marker-proxy`) {
             proxy.className = `${sourceIcon.className} fushimi-marker-proxy`;
         }
+        if (clusterHidden) proxy.classList.add("fushimi-cluster-hidden");
         const sourceComputedStyle = getComputedStyle(sourceIcon);
         proxy.style.width = sourceIcon.style.width || sourceComputedStyle.width || "46px";
         proxy.style.height = sourceIcon.style.height || sourceComputedStyle.height || "46px";
@@ -562,8 +565,15 @@
             proxy.style.setProperty("opacity", "0", "important");
             return;
         }
-        proxy.style.setProperty("visibility", "visible", "important");
-        proxy.style.setProperty("opacity", "1", "important");
+        if (clusterHidden) {
+            proxy.style.setProperty("visibility", "hidden", "important");
+            proxy.style.setProperty("opacity", "0", "important");
+            proxy.style.setProperty("pointer-events", "none", "important");
+        } else {
+            proxy.style.setProperty("visibility", "visible", "important");
+            proxy.style.setProperty("opacity", "1", "important");
+            proxy.style.setProperty("pointer-events", layer.options?.interactive === false ? "none" : "auto", "important");
+        }
         proxy.style.left = `${Number(point.x.toFixed(2))}px`;
         proxy.style.top = `${Number(point.y.toFixed(2))}px`;
         proxy.style.transform = "none";

@@ -1,9 +1,9 @@
-/* Fushimi Inari Smart Guide — offline support (v207 map engine recovery and navigation mode) */
+/* Fushimi Inari Smart Guide — offline support (v212 cluster visibility and auto-navigation) */
 'use strict';
 
-const CACHE_NAME = 'fushimi-smart-guide-v210';
+const CACHE_NAME = 'fushimi-smart-guide-v212';
 const CACHE_PREFIX = 'fushimi-smart-guide-';
-const WORKER_VERSION = 210;
+const WORKER_VERSION = 212;
 const VIDEO_PATH = '/videos/fushimi.mp4';
 const CDN_ASSETS = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
