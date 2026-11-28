@@ -7019,18 +7019,36 @@ body.planner-page .liquid-cursor {
     top: 0;
     left: 0;
     display: block;
-    width: 38%;
+    width: 0%;
     height: 100%;
     border-radius: inherit;
     background: linear-gradient(90deg, #d8462d 0%, #f2683d 55%, #ff9a60 100%);
     box-shadow: 0 0 9px rgba(224,83,47,.20);
-    animation: fushimi-progress-roll 1.55s cubic-bezier(.58,.02,.42,.98) infinite;
+    transform: none;
+    animation: none !important;
+    transition: width .34s cubic-bezier(.22,.72,.28,1);
 }
-@keyframes fushimi-progress-roll {
-    0% { transform: translateX(-112%); }
-    55% { transform: translateX(158%); }
-    100% { transform: translateX(285%); }
+.maplibre-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: min(70vw, 360px);
+    flex: 0 0 auto;
 }
+.maplibre-progress-row .maplibre-loading-progress {
+    width: auto !important;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.maplibre-loading-progress-label {
+    min-width: 3.2em;
+    color: #754438;
+    font: 850 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    text-shadow: 0 1px 0 rgba(255,255,255,.78);
+}
+.maplibre-status.is-error .maplibre-progress-row { display: none; }
 .maplibre-status:not(.is-error) #maplibreStatusText {
     position: absolute !important;
     width: 1px !important;
@@ -7091,7 +7109,7 @@ body.planner-page .liquid-cursor {
     .maplibre-torii-gate:nth-child(2) { opacity:.62; transform:translate(-50%,-50%) scale(.68); }
     .maplibre-torii-gate:nth-child(3) { opacity:.85; transform:translate(-50%,-50%) scale(.88); }
     .maplibre-torii-gate:nth-child(n+4) { display:none; }
-    .maplibre-loading-progress-track > span { animation:none; width:45%; transform:translateX(60%); }
+    .maplibre-loading-progress-track > span { animation:none !important; transform:none !important; }
 }
 .maplibre-camera-control {
     position: absolute;
@@ -7449,7 +7467,7 @@ body.planner-page .liquid-cursor {
         animation-duration: 8s;
     }
     #map .maplibre-status:not(.is-error) .maplibre-loading-progress-track > span {
-        animation-duration: 3.5s;
+        transition: none !important;
     }
 }
 
@@ -7534,7 +7552,7 @@ body.planner-page .liquid-cursor {
   z-index: 1650;
   left: 12px;
   bottom: calc(100px + env(safe-area-inset-bottom));
-  max-width: min(360px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
   color: #39443e;
   font: 650 10px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   pointer-events: auto;
@@ -7585,11 +7603,11 @@ body.planner-page .liquid-cursor {
   position: absolute;
   left: 0;
   bottom: calc(100% + 7px);
-  width: min(360px, calc(100vw - 24px));
-  max-height: min(48vh, 380px);
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(72vh, 620px);
   box-sizing: border-box;
   overflow: auto;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid rgba(255,255,255,.94);
   border-radius: 15px;
   background: rgba(255,255,255,.94);
@@ -7601,13 +7619,16 @@ body.planner-page .liquid-cursor {
 .planner-data-credits-panel h2 { margin: 0 0 8px; font-size: 11px; line-height: 1.35; font-weight: 850; }
 .planner-data-credits-panel ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .planner-data-credits-panel li { font-size: 10px; line-height: 1.55; overflow-wrap: anywhere; }
+.planner-data-credits-panel li strong { display: block; margin-bottom: 2px; color: #29382f; font-size: 10.5px; }
+.planner-data-credits-panel li small { display: block; margin-top: 2px; color: #5e6962; font-size: 9px; line-height: 1.5; }
+.planner-data-credits-panel code { font: 700 9px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .planner-data-credits-panel a { color: #315c83; text-decoration: underline; text-underline-offset: 2px; }
 .planner-workspace.planner-sheet-expanded .planner-data-credits,
 .planner-workspace.planner-sheet-expanded .planner-weather-credit { opacity: 0; pointer-events: none; }
 @media (max-width: 580px) {
   .planner-data-credits { left: 8px; bottom: calc(96px + env(safe-area-inset-bottom)); }
   .planner-weather-credit { left: 98px; bottom: calc(96px + env(safe-area-inset-bottom)); padding: 5px 7px; font-size: 8px; }
-  .planner-data-credits-panel { max-height: min(44vh, 320px); padding: 10px 12px; }
+  .planner-data-credits-panel { max-height: min(68vh, 560px); padding: 12px 13px; }
 }
 @media (prefers-reduced-motion: reduce) { .planner-data-credits, .planner-data-credits-panel { transition: none !important; } }
 
@@ -7808,6 +7829,7 @@ body.is-navigation-active .planner-v11-nav-chip {
   gap: 7px 12px !important;
   margin-top: 9px !important;
 }
+.planner-v11-sensor-status[hidden] { display: none !important; }
 .planner-v11-sensor-status {
   min-width: 0 !important;
   color: #647067 !important;

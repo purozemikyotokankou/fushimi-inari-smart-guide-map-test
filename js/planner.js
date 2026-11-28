@@ -2641,7 +2641,7 @@ document.addEventListener("DOMContentLoaded", function () {
             ></div>
 
             <div class="planner-v11-nav-utility-row">
-                <span class="planner-v11-sensor-status" id="plannerV11SensorStatus" role="status">GPSで現在地を確認します</span>
+                <span class="planner-v11-sensor-status" id="plannerV11SensorStatus" role="status" hidden aria-hidden="true"></span>
                 <a class="planner-v11-crowd-link" id="plannerV11CrowdLink" href="https://ja.kyoto.travel/comfort/fushimi/" target="_blank" rel="noopener noreferrer">京都市公式・混雑予報 ↗</a>
             </div>
 
@@ -8302,7 +8302,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         setSensorStatus("GPSを取得できません。歩行センサーによる推定を試みています");
                     } else {
                         setSensorStatus("GPS位置情報を取得できません。センサー測位を有効にできます");
-                        if (navStatus) navStatus.textContent = "GPS位置情報を確認できません";
+                        if (navStatus) navStatus.textContent = "現在地を取得できません";
                     }
                 },
                 { enableHighAccuracy: true, timeout: 12000, maximumAge: 2500 }
@@ -8924,8 +8924,8 @@ document.addEventListener("DOMContentLoaded", function () {
             )
             .bindPopup(
                 value.source === "sensor"
-                    ? "現在地（センサーによる推定位置・誤差が蓄積する場合があります）"
-                    : `現在地${value.accuracy ? `（GPS精度 約${Math.round(value.accuracy)}m）` : ""}`
+                    ? "現在地（センサーによる推定位置です）"
+                    : "現在地"
             );
 
         if (

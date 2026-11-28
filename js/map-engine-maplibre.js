@@ -33,7 +33,6 @@
     let loaded = false;
     let overlayFrame = 0;
     let programmaticCameraMove = false;
-    let fixed3DBadge = null;
     let terrainEnabled = false;
     let isAdding3DBuildings = false;
     let loadTimeoutId = 0;
@@ -68,6 +67,33 @@
     const status = () => document.getElementById("maplibreStatus");
     const statusText = () => document.getElementById("maplibreStatusText");
     const retryButton = () => document.getElementById("maplibreRetry");
+    const progressBar = () => document.querySelector("#maplibreStatus .maplibre-loading-progress");
+    const progressFill = () => document.getElementById("maplibreProgressFill");
+    const progressLabel = () => document.getElementById("maplibreProgressLabel");
+    let mapLoadProgress = -1;
+
+    function setMapLoadProgress(value) {
+        const numeric = Number(value);
+        const next = Math.max(0, Math.min(100, Number.isFinite(numeric) ? Math.round(numeric) : 0));
+        // A load cycle only moves forwards. It restarts at 0 solely on a fresh
+        // map creation or an explicit user retry, never during ordinary events.
+        if (next < mapLoadProgress) return;
+        mapLoadProgress = next;
+        const fill = progressFill();
+        if (fill) fill.style.width = `${next}%`;
+        const label = progressLabel();
+        if (label) label.textContent = `${next}%`;
+        const bar = progressBar();
+        if (bar) {
+            bar.setAttribute("aria-valuenow", String(next));
+            bar.setAttribute("aria-valuetext", `${next}%`);
+        }
+    }
+
+    function resetMapLoadProgress() {
+        mapLoadProgress = -1;
+        setMapLoadProgress(0);
+    }
 
     function showStatus(message, canRetry) {
         const node = status();
@@ -107,12 +133,8 @@
         const markerOverlay = mapRoot?.querySelector(".fushimi-marker-overlay");
         markerOverlay?.style.setProperty("pointer-events", "none", "important");
         if (ready) {
+            setMapLoadProgress(100);
             hideStatus();
-            if (fixed3DBadge && terrainEnabled) {
-                fixed3DBadge.textContent = "3D地形 表示中";
-                fixed3DBadge.title = "標高タイルの読み込みが完了しました";
-                fixed3DBadge.hidden = false;
-            }
             scheduleOverlayProjection();
         }
     }
@@ -781,38 +803,6 @@
         }
     }
 
-    function createFixed3DBadge() {
-        if (fixed3DBadge) return;
-        const host = document.querySelector(".planner-map-section");
-        if (!host) return;
-        const badge = document.createElement("div");
-        badge.className = "maplibre-fixed-3d-badge";
-        badge.hidden = true; // 読み込み中は文字バッジを出さず、鳥居ピクトグラムだけを見せる。
-        badge.textContent = "3D地形 表示中";
-        badge.setAttribute("role", "status");
-        badge.setAttribute("aria-label", "伏見稲荷周辺の3D地形を表示しています");
-        badge.style.cssText = [
-            "position:absolute",
-            "z-index:880",
-            "top:calc(100px + env(safe-area-inset-top))",
-            "left:10px",
-            "padding:8px 11px",
-            "border:1px solid rgba(255,255,255,.88)",
-            "border-radius:13px",
-            "background:rgba(255,255,255,.82)",
-            "box-shadow:0 6px 18px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.95)",
-            "backdrop-filter:blur(14px) saturate(1.15)",
-            "-webkit-backdrop-filter:blur(14px) saturate(1.15)",
-            "color:#4b5963",
-            "font:700 10px/1.2 -apple-system,BlinkMacSystemFont,sans-serif",
-            "letter-spacing:.04em",
-            "pointer-events:none",
-            "user-select:none"
-        ].join(";");
-        host.appendChild(badge);
-        fixed3DBadge = badge;
-    }
-
     let terrainEnableScheduled = false;
     let terrainEnableAttempts = 0;
     let terrainEnableTimer = 0;
@@ -844,6 +834,7 @@
                 demSourceLoaded = false;
             }
             if (terrainInitialIdleSeen && demSourceLoaded && Number.isFinite(elevation)) {
+                setMapLoadProgress(96);
                 window.requestAnimationFrame(() => {
                     if (!mapLibreMap || !terrainEnabled) return;
                     setMapSurfaceReady(true);
@@ -868,19 +859,14 @@
         terrainEnableTimer = 0;
         terrainReadyPollTimer = 0;
         console.warn("[Fushimi Map] Fixed 3D terrain could not be enabled:", error);
-        createFixed3DBadge();
-        if (fixed3DBadge) {
-            fixed3DBadge.textContent = "3D地形 読込失敗";
-            fixed3DBadge.title = error && error.message ? error.message : String(error || "unknown error");
-            fixed3DBadge.hidden = false;
-        }
         // DEMが使えない場合だけ、傾斜カメラのベースマップへフォールバックする。
         setMapSurfaceReady(true);
-        showStatus("3D地形を読み込めませんでした。地図は表示しています。通信環境を確認して再読み込みしてください。", true);
+        showStatus("地形データを読み込めませんでした。地図は表示しています。通信環境を確認して再読み込みしてください。", true);
     }
 
     function enableFixedTerrain() {
         if (!mapLibreMap || !loaded || terrainEnabled || terrainEnableScheduled) return;
+        setMapLoadProgress(52);
         terrainEnableScheduled = true;
         terrainEnableAttempts = 0;
 
@@ -908,12 +894,7 @@
                 mapLibreMap.setTerrain({ source: TERRAIN_SOURCE_ID, exaggeration: 1.35 });
                 terrainEnabled = true;
                 terrainEnableScheduled = false;
-                createFixed3DBadge();
-                if (fixed3DBadge) {
-                    fixed3DBadge.textContent = "3D地形 読込中…";
-                    fixed3DBadge.title = "標高タイルを読み込んでいます";
-                    fixed3DBadge.hidden = true;
-                }
+                setMapLoadProgress(72);
                 console.info("[Fushimi Map] Fixed 3D terrain enabled; waiting for the initial DEM-backed idle frame.");
                 waitForInitialTerrainFrame();
                 scheduleOverlayProjection();
@@ -1173,11 +1154,8 @@
                 terrainEnableTimer = 0;
                 terrainReadyPollTimer = 0;
                 setMapSurfaceReady(false);
-                if (fixed3DBadge) {
-                    fixed3DBadge.textContent = "3D地形 読込中…";
-                    fixed3DBadge.hidden = true;
-                }
-                showStatus("3D地形を準備してから地図を表示します…", false);
+                resetMapLoadProgress();
+                showStatus("地図を再読み込みしています…", false);
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 mapLibreMap.setStyle(STYLE_URL);
                 loadTimeoutId = window.setTimeout(function () {
@@ -1187,13 +1165,14 @@
         }
 
         if (!window.maplibregl || typeof window.maplibregl.Map !== "function") {
-            showStatus("新しい地図エンジンを読み込めませんでした。通信環境を確認してください。", true);
+            showStatus("地図を起動できませんでした。通信環境を確認して再読み込みしてください。", true);
             return null;
         }
 
         try {
             setMapSurfaceReady(false);
-            showStatus("3D地形を準備してから地図を表示します…", false);
+            resetMapLoadProgress();
+            showStatus("地図を準備しています…", false);
             if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
             mapLibreMap = new window.maplibregl.Map({
                 container,
@@ -1237,11 +1216,12 @@
                     return;
                 }
                 styleReadyForCurrentStyle = true;
+                setMapLoadProgress(38);
                 loaded = true;
                 if (loadTimeoutId) window.clearTimeout(loadTimeoutId);
                 loadTimeoutId = 0;
                 container.classList.add("is-maplibre-loaded");
-                showStatus("3D地形を準備しています…", false);
+                showStatus("地図を仕上げています…", false);
                 add3DBuildings();
                 addMarkerProjectionReferenceLayer();
                 // スタイル再読込後もドラッグ移動・ズームを必ず有効化する。
@@ -1269,7 +1249,7 @@
                 console.warn("[Fushimi Map Test] MapLibre error:", message || event);
             });
             loadTimeoutId = window.setTimeout(function () {
-                if (!loaded) showStatus("3Dマップを読み込めません。通信環境を確認して再読み込みしてください。", true);
+                if (!loaded) showStatus("地図を読み込めません。通信環境を確認して再読み込みしてください。", true);
             }, 18000);
 
             const mapRoot = document.getElementById("map");
